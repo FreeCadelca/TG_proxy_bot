@@ -47,7 +47,7 @@ async def daily_check(bot):
                     # Условие для напоминания
                     if days_to_payment <= REMIND_BEFORE_DAYS or (now - (
                             payment.confirmed_at or now - timedelta(days=REMIND_INTERVAL_DAYS + 1))) >= timedelta(
-                            days=REMIND_INTERVAL_DAYS):
+                        days=REMIND_INTERVAL_DAYS):
                         await bot.send_message(user.telegram_id,
                                                f"Напоминание: Недостаёт {needed} руб. для оплаты за {current_month}. Пополните на {', '.join(ADMIN_PHONES)}.")
                         # Update last remind time? Можно добавить поле last_remind в Payment
