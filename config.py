@@ -36,7 +36,7 @@ CONFIG_GIST_URL: str = os.getenv("CONFIG_GIST_URL", "https://gist.github.com/you
 
 # Для безопасности: Не экспортируем sensitive vars случайно
 __all__ = [
-    "BOT_TOKEN", "ADMIN_IDS", "DB_URL", "MONTHLY_FEE", "PAYMENT_DAY",
+    "BOT_TOKEN", "ADMIN_IDS", "ADMIN_NICKNAMES", "DB_URL", "MONTHLY_FEE", "PAYMENT_DAY",
     "REMIND_BEFORE_DAYS", "REMIND_INTERVAL_DAYS", "ADMIN_PHONES",
     "HELP_GIST_URL", "CONFIG_GIST_URL"
 ]

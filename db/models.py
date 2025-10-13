@@ -6,6 +6,7 @@ from sqlalchemy.types import DECIMAL
 
 Base = declarative_base()
 
+
 class User(Base):
     """Модель пользователя."""
     __tablename__ = "users"
@@ -21,6 +22,7 @@ class User(Base):
     keys = relationship("Key", back_populates="user")
     payments = relationship("Payment", back_populates="user")
 
+
 class Invite(Base):
     """Модель invite-кодов."""
     __tablename__ = "invites"
@@ -32,6 +34,7 @@ class Invite(Base):
     created_by = Column(Integer, nullable=False)
     expires_at = Column(DateTime, nullable=True)
 
+
 class Key(Base):
     """Модель ключей (до 3 на user)."""
     __tablename__ = "keys"
@@ -42,6 +45,17 @@ class Key(Base):
     added_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="keys")
+
+
+class KeyInQueue(Base):
+    """Модель ключей в очереди, привязанных к nickname (до регистрации пользователя)."""
+    __tablename__ = "keys_in_queue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nickname = Column(String, index=True, nullable=False)  # Ник, к которому привязан ключ
+    key_text = Column(Text, nullable=False)  # До 4000 символов
+    added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 
 class Payment(Base):
     """Модель оплат (история по месяцам)."""

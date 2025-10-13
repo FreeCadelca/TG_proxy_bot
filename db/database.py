@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from typing import List
 
-from .models import Base, User, Invite, Key, Payment
+from .models import Base, User, Invite, Key, KeyInQueue, Payment
 from config import DB_URL, MONTHLY_FEE
 
 # Async engine для aiogram (требует async-драйвер, e.g. aiosqlite для SQLite)
@@ -130,17 +130,28 @@ async def mark_invite_used(code: str, user_id: int):
 # --- Key operations ---
 
 async def add_key(user_id: int, key_text: str) -> bool:
-    """Добавить ключ (check на лимит 3)."""
+    """Добавить ключ (check на лимит 5)."""
     async with AsyncSessionLocal() as session:
+        # Переносим существующие ключи из KeyInQueue, если есть (для nickname)
+        user = await session.get(User, user_id)
+        if user:
+            await move_keys_to_user(user.nickname, user_id)  # Переносим перед добавлением
         # Check count
         count = await session.scalar(select(func.count()).select_from(Key).where(Key.user_id == user_id))
-        if count >= 3:
+        if count >= 5:
             logging.warning(f"Key limit reached for user {user_id}")
             return False
         key = Key(user_id=user_id, key_text=key_text)
         session.add(key)
-        await session.commit()
-        return True
+
+        try:
+            await session.commit()
+            logging.info(f"Key added for user_id {user_id}")
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logging.warning(f"Failed to add key for user_id {user_id}")
+            return False
 
 
 async def get_user_keys(user_id: int) -> List[Key]:
@@ -148,6 +159,50 @@ async def get_user_keys(user_id: int) -> List[Key]:
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Key).where(Key.user_id == user_id))
         return result.scalars().all()
+
+
+async def add_key_to_queue(nickname: str, key_text: str) -> bool:
+    """Добавить ключ в очередь для nickname."""
+    async with AsyncSessionLocal() as session:
+        key = KeyInQueue(nickname=nickname, key_text=key_text)
+        session.add(key)
+        try:
+            await session.commit()
+            logging.info(f"Key added to queue for nickname {nickname}")
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logging.warning(f"Failed to add key to queue for nickname {nickname}")
+            return False
+
+
+async def get_keys_in_queue_by_nickname(nickname: str) -> List[KeyInQueue]:
+    """Получить все ключи в очереди для nickname."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(KeyInQueue).where(KeyInQueue.nickname == nickname))
+        return result.scalars().all()
+
+
+async def move_keys_to_user(nickname: str, user_id: int) -> int:
+    """Перенести ключи из KeyInQueue в Key для нового user_id. Возвращает кол-во перенесённых."""
+    async with AsyncSessionLocal() as session:
+        keys = await get_keys_in_queue_by_nickname(nickname)
+        moved_count = 0
+        for key_in_queue in keys:
+            # Проверяем лимит 3 ключа
+            current_count = await session.scalar(select(func.count()).select_from(Key).where(Key.user_id == user_id))
+            if current_count >= 3:
+                logging.warning(f"Key limit reached for user_id {user_id}, skipping key transfer")
+                break
+            # Переносим
+            new_key = Key(user_id=user_id, key_text=key_in_queue.key_text)
+            session.add(new_key)
+            await session.delete(key_in_queue)  # Удаляем из очереди
+            moved_count += 1
+        await session.commit()
+        if moved_count > 0:
+            logging.info(f"Moved {moved_count} keys from queue to user_id {user_id} for nickname {nickname}")
+        return moved_count
 
 
 # --- Payment operations ---

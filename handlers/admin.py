@@ -6,15 +6,18 @@ import datetime
 
 from sqlalchemy import select
 
-from db.database import get_user_by_identifier, generate_invite, add_key, confirm_payment
+from db.database import get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue
 from db.models import User  # Для list_mappings
 from config import ADMIN_IDS
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
+from handlers.user import escape_markdown_v2
 
 router = Router()
 
+
 async def is_admin(tg_id: int) -> bool:
     return tg_id in ADMIN_IDS
+
 
 @router.message(Command("generate_invite"))
 async def generate_invite_handler(message: Message):
@@ -27,9 +30,11 @@ async def generate_invite_handler(message: Message):
     nickname = args[0]
     try:
         code = await generate_invite(message.from_user.id, nickname)
-        await message.answer(f"Новый invite-код для {nickname}: {code}")
+        response = f"Новый invite код для {nickname}:\n```{escape_markdown_v2(code)}```"
+        await message.answer(response, parse_mode="MarkdownV2")
     except ValueError as e:
         await message.answer(str(e))
+
 
 @router.message(Command("add_key"))
 async def add_key_handler(message: Message):
@@ -41,13 +46,23 @@ async def add_key_handler(message: Message):
         return await message.answer("Usage: /add_key <identifier> <key_text>")
     identifier = args[0]
     key_text = " ".join(args[1:])
+
     user = await get_user_by_identifier(identifier)
     if not user:
-        return await message.answer("Пользователь не найден по identifier.")
-    if await add_key(user.id, key_text):
-        await message.answer("Ключ добавлен.")
+        # Пользователь не найден — добавляем в KeyInQueue
+        if not isinstance(identifier, str):  # Если identifier — tg_id (int), ошибка
+            return await message.answer("Пользователь не найден, используйте nickname для очереди.")
+        if await add_key_to_queue(identifier, key_text):
+            await message.answer(f"Ключ добавлен в очередь для {identifier}.")
+        else:
+            await message.answer("Ошибка добавления ключа в очередь.")
     else:
-        await message.answer("Лимит ключей достигнут.")
+        # Пользователь существует — добавляем в Key (move_keys_to_user вызывается внутри)
+        if await add_key(user.id, key_text):
+            await message.answer("Ключ добавлен для {identifier}.")
+        else:
+            await message.answer("Лимит ключей достигнут.")
+
 
 @router.message(Command("confirm_payment"))
 async def confirm_payment_handler(message: Message):
@@ -68,9 +83,11 @@ async def confirm_payment_handler(message: Message):
         current_month = datetime.now().strftime("%Y-%m")
         if await confirm_payment(user.id, amount, current_month, message.from_user.username):
             await message.answer("Платёж подтверждён.")
-            await message.bot.send_message(user.telegram_id, f"@{message.from_user.username} проверил ваш платёж на {amount} руб. и обновил баланс и список платежей.")
+            await message.bot.send_message(user.telegram_id,
+                                           f"@{message.from_user.username} проверил ваш платёж на {amount} руб. и обновил баланс и список платежей.")
     except ValueError:
         await message.answer("Неверная сумма или identifier.")
+
 
 @router.message(Command("set_fee"))
 async def set_fee_handler(message: Message):
@@ -87,6 +104,7 @@ async def set_fee_handler(message: Message):
         await message.answer(f"Новая цена: {new_fee} руб./мес.")
     except ValueError:
         await message.answer("Неверная сумма.")
+
 
 @router.message(Command("list_mappings"))
 async def list_mappings_handler(message: Message):

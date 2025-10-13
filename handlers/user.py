@@ -6,8 +6,9 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from db.database import get_user_by_tg_id, add_user, get_invite_by_code, mark_invite_used, get_user_keys, get_user_payments
-from config import HELP_GIST_URL, CONFIG_GIST_URL, MONTHLY_FEE, ADMIN_PHONES, ADMIN_IDS, ADMIN_NICKNAMES
+from db.database import get_user_by_tg_id, add_user, get_invite_by_code, mark_invite_used, get_user_keys, \
+    get_user_payments, move_keys_to_user
+from config import HELP_GIST_URL, CONFIG_GIST_URL, MONTHLY_FEE, ADMIN_PHONES, ADMIN_IDS, ADMIN_NICKNAMES, PAYMENT_DAY
 
 router = Router()
 
@@ -22,7 +23,12 @@ async def start_handler(message: Message, state: FSMContext):
     tg_id = message.from_user.id
     user = await get_user_by_tg_id(tg_id)
     if user:
-        await message.answer("Вы уже зарегистрированы. Используйте /keys, /payments, /help.")
+        response = ("Вы уже зарегистрированы. Используйте команды:\n"
+                    "/keys, /payments, /help, /config.\n"
+                    "Администраторские команды:\n"
+                    "/generate_invite, /add_key <key_text>, /confirm_payment, "
+                    "/set_fee <new_fee>, /list_users, /list_mappings")
+        await message.answer(response)
         return
 
     # Автодобавление, если админ (простая проверка для безопасности)
@@ -60,12 +66,26 @@ async def process_invite(message: Message, state: FSMContext):
         user = await add_user(message.from_user.id, message.from_user.username, invite.nickname)
         if user:
             await mark_invite_used(code, user.id)
+            # Переносим ключи из очереди
+            moved_count = await move_keys_to_user(invite.nickname, user.id)
             await state.clear()
+            response = "Регистрация успешна! Добро пожаловать."
+            if moved_count > 0:
+                response += f"\nВам автоматически добавлено {moved_count} ключ(ей) из очереди."
             await message.answer("Регистрация успешна! Добро пожаловать.")
         else:
             await message.answer("Ошибка регистрации (возможно, duplicate nickname).")
     else:
         await message.answer("Неверный или истёкший invite-код.")
+
+
+# Простая функция для экранирования MarkdownV2
+def escape_markdown_v2(text: str) -> str:
+    """Экранировать спецсимволы для Telegram MarkdownV2."""
+    special_chars = r'_[]()~`>#*+-=|{}.!'
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
 
 
 @router.message(Command("keys"))
@@ -77,8 +97,9 @@ async def keys_handler(message: Message):
     keys = await get_user_keys(user.id)
     if not keys:
         return await message.answer("У вас нет ключей.")
-    response = "Ваши ключи:\n" + "\n".join([f"{i + 1}. {k.key_text}" for i, k in enumerate(keys)])
-    await message.answer(response)
+    response = ("Ваши ключи:\n\n" +
+                "\n\n".join([f"{i + 1} Ключ:\n```{escape_markdown_v2(k.key_text)}```" for i, k in enumerate(keys)]))
+    await message.answer(response, parse_mode="MarkdownV2")
 
 
 @router.message(Command("payments"))
@@ -88,7 +109,13 @@ async def payments_handler(message: Message):
     if not user:
         return await message.answer("Вы не зарегистрированы.")
     payments = await get_user_payments(user.id)
-    response = f"Ваш баланс: {user.balance} руб.\nТекущая цена: {MONTHLY_FEE} руб./мес.\nНомера для перевода: {', '.join(ADMIN_PHONES)}\n\nИстория оплат:\n"
+    response = (f""
+                f"Ваш баланс: {user.balance} руб.\n"
+                f"Текущая цена: {MONTHLY_FEE} руб./мес.\n"
+                f"Номера для перевода: {', '.join(ADMIN_PHONES)}\n"
+                f"Текущий день месяца начала сбора: {PAYMENT_DAY}\n"
+                f"\n"
+                f"История оплат:\n")
     for p in payments:
         status = "Оплачено" if p.paid else "Не оплачено"
         response += f"{p.month_year}: {status} ({p.amount} руб.)\n"
@@ -110,6 +137,7 @@ async def refresh_payments(callback: CallbackQuery):
 async def help_handler(message: Message):
     """Отправить ссылку на help gist."""
     await message.answer(f"Гайд по подключению: {HELP_GIST_URL}")
+
 
 @router.message(Command("config"))
 async def config_handler(message: Message):
