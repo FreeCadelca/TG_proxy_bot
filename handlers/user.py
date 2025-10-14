@@ -41,12 +41,12 @@ async def start_handler(message: Message, state: FSMContext):
             nickname = "admin_" + str(tg_id)
             logging.warning(f"Fallback nickname for admin {tg_id}: {nickname} (check ADMIN_NICKNAMES)")
 
-        user = await add_user(
+        user_id = await add_user(
             tg_id=tg_id,
             username=message.from_user.username,
             nickname=nickname  # Теперь из config/fallback
         )
-        if user:
+        if user_id:
             await message.answer("Авторегистрация админа успешна! Добро пожаловать.")
         else:
             await message.answer("Ошибка авторегистрации админа.")
@@ -63,16 +63,18 @@ async def process_invite(message: Message, state: FSMContext):
     code = message.text.strip()
     invite = await get_invite_by_code(code)
     if invite:
-        user = await add_user(message.from_user.id, message.from_user.username, invite.nickname)
-        if user:
-            await mark_invite_used(code, user.id)
-            # Переносим ключи из очереди
-            moved_count = await move_keys_to_user(invite.nickname, user.id)
-            await state.clear()
-            response = "Регистрация успешна! Добро пожаловать."
-            if moved_count > 0:
-                response += f"\nВам автоматически добавлено {moved_count} ключ(ей) из очереди."
-            await message.answer("Регистрация успешна! Добро пожаловать.")
+        user_id = await add_user(message.from_user.id, message.from_user.username, invite.nickname)
+        if user_id:
+            # Используем telegram_id для mark_invite_used и user_id для move_keys_to_user
+            if await mark_invite_used(code, message.from_user.id):
+                moved_count = await move_keys_to_user(invite.nickname, user_id)
+                await state.clear()
+                response = "Регистрация успешна! Добро пожаловать."
+                if moved_count > 0:
+                    response += f"\nВам автоматически добавлено {moved_count} ключ(ей) из очереди."
+                await message.answer(response)
+            else:
+                await message.answer("Ошибка при пометке invite-кода как использованного.")
         else:
             await message.answer("Ошибка регистрации (возможно, duplicate nickname).")
     else:

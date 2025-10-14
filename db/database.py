@@ -57,14 +57,16 @@ async def get_user_by_identifier(identifier: str) -> User | None:
     return user
 
 
-async def add_user(tg_id: int, username: str, nickname: str, is_admin: bool = False) -> User:
+async def add_user(tg_id: int, username: str, nickname: str, is_admin: bool = False) -> int | None:
     """Добавить пользователя с nickname."""
     async with AsyncSessionLocal() as session:
         user = User(telegram_id=tg_id, username=username, nickname=nickname, is_admin=is_admin)
         session.add(user)
         try:
             await session.commit()
-            return user
+            await session.refresh(user)  # Гарантируем, что ID доступен
+            logging.info(f"User added: telegram_id={tg_id}, nickname={nickname}")
+            return user.id
         except IntegrityError:
             await session.rollback()
             logging.warning(f"Duplicate nickname or tg_id: {nickname}/{tg_id}")
@@ -120,11 +122,33 @@ async def get_invite_by_code(code: str) -> Invite | None:
         return None
 
 
-async def mark_invite_used(code: str, user_id: int):
-    """Пометить invite как used."""
+async def mark_invite_used(code: str, telegram_id: int):
+    """Пометить invite-код как использованный, привязав к telegram_id."""
     async with AsyncSessionLocal() as session:
-        await session.execute(update(Invite).where(Invite.code == code).values(used_by=user_id))
-        await session.commit()
+        # Находим invite
+        invite = await session.execute(select(Invite).where(Invite.code == code, Invite.used_by.is_(None)))
+        invite = invite.scalar_one_or_none()
+        if not invite:
+            logging.warning(f"Invite code {code} not found or already used")
+            return False
+
+        # Находим пользователя по telegram_id
+        user = await session.execute(select(User).where(User.telegram_id == telegram_id))
+        user = user.scalar_one_or_none()
+        if not user:
+            logging.warning(f"User with telegram_id {telegram_id} not found")
+            return False
+
+        # Обновляем invite
+        invite.used_by = user.id
+        try:
+            await session.commit()
+            logging.info(f"Invite {code} marked as used by telegram_id {telegram_id}")
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logging.error(f"Failed to mark invite {code} as used")
+            return False
 
 
 # --- Key operations ---
@@ -199,10 +223,15 @@ async def move_keys_to_user(nickname: str, user_id: int) -> int:
             session.add(new_key)
             await session.delete(key_in_queue)  # Удаляем из очереди
             moved_count += 1
-        await session.commit()
-        if moved_count > 0:
-            logging.info(f"Moved {moved_count} keys from queue to user_id {user_id} for nickname {nickname}")
-        return moved_count
+        try:
+            await session.commit()
+            if moved_count > 0:
+                logging.info(f"Moved {moved_count} keys from queue to user_id {user_id} for nickname {nickname}")
+            return moved_count
+        except IntegrityError:
+            await session.rollback()
+            logging.error(f"Failed to move keys for user_id {user_id}, nickname {nickname}")
+            return 0
 
 
 # --- Payment operations ---
