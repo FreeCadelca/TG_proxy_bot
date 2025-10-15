@@ -1,14 +1,14 @@
 import logging
 
 from aiogram import Router, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from db.database import get_user_by_tg_id, add_user, get_invite_by_code, mark_invite_used, get_user_keys, \
     get_user_payments, move_keys_to_user
-from config import HELP_GIST_URL, CONFIG_GIST_URL, MONTHLY_FEE, ADMIN_PHONES, ADMIN_IDS, ADMIN_NICKNAMES, PAYMENT_DAY
+from config import config
 
 router = Router()
 
@@ -23,19 +23,16 @@ async def start_handler(message: Message, state: FSMContext):
     tg_id = message.from_user.id
     user = await get_user_by_tg_id(tg_id)
     if user:
-        response = ("Вы уже зарегистрированы. Используйте команды:\n"
-                    "/keys, /payments, /help, /config.\n"
-                    "Администраторские команды:\n"
-                    "/generate_invite, /add_key <key_text>, /confirm_payment, "
-                    "/set_fee <new_fee>, /list_users, /list_mappings")
+        response = ("Используйте команды:\n"
+                    "/keys, /payments, /help, /config, /guide")
         await message.answer(response)
         return
 
     # Автодобавление, если админ (простая проверка для безопасности)
-    if tg_id in ADMIN_IDS:
+    if tg_id in config.ADMIN_IDS:
         try:
-            index = ADMIN_IDS.index(tg_id)
-            nickname = ADMIN_NICKNAMES[index]  # Берём соответствующий nick
+            index = config.ADMIN_IDS.index(tg_id)
+            nickname = config.ADMIN_NICKNAMES[index]  # Берём соответствующий nick
         except (IndexError, ValueError):
             # Fallback если mismatch или not found (безопасность: не крашим)
             nickname = "admin_" + str(tg_id)
@@ -47,7 +44,7 @@ async def start_handler(message: Message, state: FSMContext):
             nickname=nickname  # Теперь из config/fallback
         )
         if user_id:
-            await message.answer("Авторегистрация админа успешна! Добро пожаловать.")
+            await message.answer("Авторегистрация админа успешна! Добро пожаловать. Для помощи используйте /help")
         else:
             await message.answer("Ошибка авторегистрации админа.")
         return
@@ -113,35 +110,49 @@ async def payments_handler(message: Message):
     payments = await get_user_payments(user.id)
     response = (f""
                 f"Ваш баланс: {user.balance} руб.\n"
-                f"Текущая цена: {MONTHLY_FEE} руб./мес.\n"
-                f"Номера для перевода: {', '.join(ADMIN_PHONES)}\n"
-                f"Текущий день месяца начала сбора: {PAYMENT_DAY}\n"
+                f"Текущая цена: {config.MONTHLY_FEE} руб./мес.\n"
+                f"Номера для перевода: {', '.join(config.ADMIN_PHONES)}\n"
+                f"Текущий день месяца начала сбора: {config.PAYMENT_DAY}\n"
                 f"\n"
                 f"История оплат:\n")
     for p in payments:
         status = "Оплачено" if p.paid else "Не оплачено"
         response += f"{p.month_year}: {status} ({p.amount} руб.)\n"
-
-    # Inline kb для удобства (e.g. кнопка обновить)
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Обновить", callback_data="refresh_payments")]])
-    await message.answer(response, reply_markup=kb)
+    await message.answer(response)
 
 
-@router.callback_query(F.data == "refresh_payments")
-async def refresh_payments(callback: CallbackQuery):
-    """Callback для обновления /payments."""
-    # Повторить логику payments_handler
-    await callback.message.edit_text("Обновляю...")  # Placeholder, реализуй полную
+@router.message(Command("guide"))
+async def guide_handler(message: Message):
+    """Отправить ссылку на help gist."""
+    await message.answer(f"Гайд по подключению: {config.HELP_GIST_URL}")
 
 
 @router.message(Command("help"))
-async def help_handler(message: Message):
-    """Отправить ссылку на help gist."""
-    await message.answer(f"Гайд по подключению: {HELP_GIST_URL}")
+async def help_bot_handler(message: Message):
+    """Выводит информацию о боте и примеры команд."""
+    response = """
+    Информация о боте:
+    Это приватный прокси-сервис бот. Регистрация только по invite-коду от админа.
+    Ключи доступны всегда, оплаты — для напоминаний (автосписание в день платежа).
+
+    Команды для пользователей:
+    /keys — Показать мои ключи
+    /payments — Баланс и история.
+    /help — Помощь по использованию
+    /config — Ссылка на конфиг для роутинга (маршрутизации) на Nekoray
+    /guide — Ссылка на гайд по подключению ключей
+
+    Для админов:
+    /generate_invite <nickname>
+    /add_key <identifier> <key>
+    /confirm_payment <tg_id | nickname> <amount>
+    /set_fee <new_fee>
+    /list_mappings
+    """
+    await message.answer(response)
 
 
 @router.message(Command("config"))
 async def config_handler(message: Message):
     """Отправить ссылку на config gist."""
-    await message.answer(f"Конфиг для роутинга: {CONFIG_GIST_URL}")
+    await message.answer(f"Конфиг для роутинга: {config.CONFIG_GIST_URL}")

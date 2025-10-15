@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from db.database import get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue
 from db.models import User  # Для list_mappings
-from config import ADMIN_IDS
+from config import config
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
 from handlers.user import escape_markdown_v2
 
@@ -16,7 +16,7 @@ router = Router()
 
 
 async def is_admin(tg_id: int) -> bool:
-    return tg_id in ADMIN_IDS
+    return tg_id in config.ADMIN_IDS
 
 
 @router.message(Command("generate_invite"))
@@ -59,7 +59,7 @@ async def add_key_handler(message: Message):
     else:
         # Пользователь существует — добавляем в Key (move_keys_to_user вызывается внутри)
         if await add_key(user.id, key_text):
-            await message.answer("Ключ добавлен для {identifier}.")
+            await message.answer(f"Ключ добавлен для {identifier}.")
         else:
             await message.answer("Лимит ключей достигнут.")
 
@@ -99,8 +99,7 @@ async def set_fee_handler(message: Message):
         return await message.answer("Usage: /set_fee <new_fee>")
     try:
         new_fee = float(args[0])
-        global MONTHLY_FEE  # Для динамики, но лучше в БД
-        MONTHLY_FEE = new_fee
+        config.update_fee(new_fee) # Обновляем через метод
         await message.answer(f"Новая цена: {new_fee} руб./мес.")
     except ValueError:
         await message.answer("Неверная сумма.")

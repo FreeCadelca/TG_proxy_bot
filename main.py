@@ -4,7 +4,7 @@ from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from config import BOT_TOKEN
+from config import config
 from db.database import init_db
 from utils.scheduler import init_scheduler
 from handlers.user import router as user_router
@@ -22,7 +22,7 @@ logging.basicConfig(
 
 
 async def main():
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(token=config.BOT_TOKEN)
     dp = Dispatcher()
     dp.include_router(user_router)
     dp.include_router(admin_router)

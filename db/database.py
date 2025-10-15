@@ -8,10 +8,10 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from typing import List
 
 from .models import Base, User, Invite, Key, KeyInQueue, Payment
-from config import DB_URL, MONTHLY_FEE
+from config import config
 
 # Async engine для aiogram (требует async-драйвер, e.g. aiosqlite для SQLite)
-engine = create_async_engine(DB_URL, echo=False)  # echo=True для debug SQL
+engine = create_async_engine(config.DB_URL, echo=False)  # echo=True для debug SQL
 AsyncSessionLocal = async_sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -243,7 +243,7 @@ async def get_or_create_payment(user_id: int, month_year: str) -> Payment:
             select(Payment).where(Payment.user_id == user_id, Payment.month_year == month_year))
         payment = result.scalar_one_or_none()
         if not payment:
-            payment = Payment(user_id=user_id, month_year=month_year, amount=Decimal(str(MONTHLY_FEE)))
+            payment = Payment(user_id=user_id, month_year=month_year, amount=Decimal(str(config.MONTHLY_FEE)))
             session.add(payment)
             await session.commit()
         return payment
