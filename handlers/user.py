@@ -1,7 +1,7 @@
 import logging
 
-from aiogram import Router
-from aiogram.types import Message
+from aiogram import Router, types
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -17,6 +17,46 @@ class Registration(StatesGroup):
     invite_code = State()
 
 
+TextOnButtons = ["🔑 Ключи", "💰 Платежи", "📖 Гайд", "⚙️ Файл конфига", "ℹ️ Помощь️"]
+
+main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text=TextOnButtons[0]), KeyboardButton(text=TextOnButtons[1])],
+        [KeyboardButton(text=TextOnButtons[2]), KeyboardButton(text=TextOnButtons[3])],
+        [KeyboardButton(text=TextOnButtons[4])],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False,
+    input_field_placeholder="Выберите действие 🔽"
+)
+
+
+# === обработчики кнопок ===
+@router.message(lambda msg: msg.text == TextOnButtons[0])
+async def keys_btn_handler(message: types.Message):
+    await keys_handler(message)
+
+
+@router.message(lambda msg: msg.text == TextOnButtons[1])
+async def payments_btn_handler(message: types.Message):
+    await payments_handler(message)
+
+
+@router.message(lambda msg: msg.text == TextOnButtons[2])
+async def guide_btn_handler(message: types.Message):
+    await guide_handler(message)
+
+
+@router.message(lambda msg: msg.text == TextOnButtons[3])
+async def help_btn_handler(message: types.Message):
+    await config_handler(message)
+
+
+@router.message(lambda msg: msg.text == TextOnButtons[4])
+async def config_btn_handler(message: types.Message):
+    await help_bot_handler(message)
+
+
 @router.message(Command("start"))
 async def start_handler(message: Message, state: FSMContext):
     """Обработка /start: Проверка регистрации, автодобавление админа, FSM для invite."""
@@ -25,7 +65,7 @@ async def start_handler(message: Message, state: FSMContext):
     if user:
         response = ("Используйте команды:\n"
                     "/keys, /payments, /help, /config, /guide")
-        await message.answer(response)
+        await message.answer(response, reply_markup=main_keyboard)
         return
 
     # Автодобавление, если админ (простая проверка для безопасности)
@@ -45,7 +85,7 @@ async def start_handler(message: Message, state: FSMContext):
         )
         if user_id:
             await message.answer("Авторегистрация админа успешна! Добро пожаловать."
-                                 "\nДля помощи по боту используйте /help")
+                                 "\nДля помощи по боту используйте /help", reply_markup=main_keyboard)
         else:
             await message.answer("Ошибка авторегистрации админа.")
         return
@@ -71,7 +111,7 @@ async def process_invite(message: Message, state: FSMContext):
                             "Для помощи по боту используйте /help")
                 if moved_count > 0:
                     response += f"\nВам автоматически добавлено {moved_count} ключ(ей) из очереди."
-                await message.answer(response)
+                await message.answer(response, reply_markup=main_keyboard)
             else:
                 await message.answer("Ошибка при пометке invite-кода как использованного.")
         else:
@@ -100,7 +140,7 @@ async def keys_handler(message: Message):
         return await message.answer("У вас нет ключей((( Попросите администраторов добавить их вам")
     response = ("Ваши ключи 🔑:\n\n" +
                 "\n\n".join([f"{i + 1} Ключ:\n```{escape_markdown_v2(k.key_text)}```" for i, k in enumerate(keys)]))
-    await message.answer(response, parse_mode="MarkdownV2")
+    await message.answer(response, parse_mode="MarkdownV2", reply_markup=main_keyboard)
 
 
 @router.message(Command("payments"))
@@ -120,13 +160,13 @@ async def payments_handler(message: Message):
     for p in payments:
         status = "Оплачено ✅" if p.paid else "Не оплачено ❌"
         response += f"{p.month_year}: {status} ({p.amount} руб.)\n"
-    await message.answer(response)
+    await message.answer(response, reply_markup=main_keyboard)
 
 
 @router.message(Command("guide"))
 async def guide_handler(message: Message):
     """Отправить ссылку на help gist."""
-    await message.answer(f"📖 Гайд по подключению 📖: {config.HELP_GIST_URL}")
+    await message.answer(f"📖 Гайд по подключению 📖: {config.HELP_GIST_URL}", reply_markup=main_keyboard)
 
 
 @router.message(Command("help"))
@@ -136,7 +176,10 @@ async def help_bot_handler(message: Message):
     Информация о боте:
     Это приватный прокси-сервис бот. Регистрация только по invite-коду от админа.
     Ключи доступны всегда, оплаты — для напоминаний (автосписание в день платежа).
-    Счёт может быть отрицательным, если оплата задержана.   
+    Счёт может быть отрицательным, если оплата задержана.
+    
+    В боте настроены автоматические напоминания. 
+    В день сбора происходит списание средств, при отрицательном счёте будут приходить напоминания об оплате
 
     Команды для пользователей:
     /keys — 🔑 Показать мои ключи 
@@ -145,10 +188,10 @@ async def help_bot_handler(message: Message):
     /config — ⚙️ Ссылка на конфиг для роутинга (маршрутизации) на Nekoray
     /guide — 📖 Ссылка на гайд по подключению ключей
     """
-    await message.answer(response)
+    await message.answer(response, reply_markup=main_keyboard)
 
 
 @router.message(Command("config"))
 async def config_handler(message: Message):
     """Отправить ссылку на config gist."""
-    await message.answer(f"Конфиг для роутинга: {config.CONFIG_GIST_URL}")
+    await message.answer(f"Конфиг для роутинга: {config.CONFIG_GIST_URL}", reply_markup=main_keyboard)
