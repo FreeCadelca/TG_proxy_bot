@@ -1,10 +1,9 @@
 import logging
-from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from sqlalchemy import create_engine, select, update, func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from typing import List
 
 from .models import Base, User, Invite, Key, KeyInQueue, Payment
@@ -21,10 +20,9 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
 
-async def get_session():
-    """Генератор сессии для with."""
-    async with AsyncSessionLocal() as session:
-        yield session
+async def get_session() -> AsyncSession:
+    """Возвращает AsyncSession для работы с БД."""
+    return AsyncSessionLocal()
 
 
 # --- User operations ---
@@ -57,10 +55,10 @@ async def get_user_by_identifier(identifier: str) -> User | None:
     return user
 
 
-async def add_user(tg_id: int, username: str, nickname: str, is_admin: bool = False) -> int | None:
+async def add_user(tg_id: int, username: str, nickname: str) -> int | None:
     """Добавить пользователя с nickname."""
     async with AsyncSessionLocal() as session:
-        user = User(telegram_id=tg_id, username=username, nickname=nickname, is_admin=is_admin)
+        user = User(telegram_id=tg_id, username=username, nickname=nickname)
         session.add(user)
         try:
             await session.commit()
@@ -73,14 +71,12 @@ async def add_user(tg_id: int, username: str, nickname: str, is_admin: bool = Fa
             return None
 
 
-async def update_balance(user_id: int, amount: Decimal):
+async def update_balance(user_id: int, amount: int):
     """Обновить баланс (добавление суммы)."""
     async with AsyncSessionLocal() as session:
         user = await session.get(User, user_id)
         if user:
             user.balance += amount
-            if user.balance < Decimal("0.00"):
-                logging.warning(f"Negative balance after update for user {user_id}: {user.balance}")
             await session.commit()
 
 
@@ -243,19 +239,33 @@ async def get_or_create_payment(user_id: int, month_year: str) -> Payment:
             select(Payment).where(Payment.user_id == user_id, Payment.month_year == month_year))
         payment = result.scalar_one_or_none()
         if not payment:
-            payment = Payment(user_id=user_id, month_year=month_year, amount=Decimal(str(config.MONTHLY_FEE)))
+            payment = Payment(user_id=user_id, month_year=month_year, amount=config.MONTHLY_FEE)
             session.add(payment)
             await session.commit()
+            await session.refresh(payment)
         return payment
 
 
-async def confirm_payment(user_id: int, amount: Decimal, month_year: str, admin_username: str) -> bool:
+async def close_payment(user_id: int, month_year: str) -> None:
+    """Закрыть payment для месяца."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Payment).where(Payment.user_id == user_id, Payment.month_year == month_year)
+        )
+        payment = result.scalar_one_or_none()
+        payment.paid = True
+        # payment.confirmed_at = datetime.now()
+        await session.commit()
+
+
+
+async def confirm_payment(user_id: int, amount: int, month_year: str, admin_username: str) -> bool:
     """Подтвердить платёж: добавить к балансу, mark paid если хватает."""
     await update_balance(user_id, amount)
     payment = await get_or_create_payment(user_id, month_year)
     if not payment.paid:
         # Здесь логика: Если баланс после добавления >= amount, то paid (но поскольку автосписание в scheduler, здесь просто добавляем)
-        payment.confirmed_at = datetime.utcnow()
+        # payment.confirmed_at = datetime.utcnow()
         await AsyncSessionLocal().commit()  # Note: Лучше в одной сессии, но для примера
     # Уведомление юзеру шлётся в handler
     return True

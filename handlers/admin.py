@@ -1,7 +1,6 @@
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
-from decimal import Decimal
 import datetime
 
 from sqlalchemy import select
@@ -11,6 +10,7 @@ from db.models import User  # Для list_mappings
 from config import config
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
 from handlers.user import escape_markdown_v2
+from utils.scheduler import daily_check
 
 router = Router()
 
@@ -66,7 +66,7 @@ async def add_key_handler(message: Message):
 
 @router.message(Command("confirm_payment"))
 async def confirm_payment_handler(message: Message):
-    """Подтвердить платёж: /confirm_payment <identifier> <amount>."""
+    """Подтвердить пополнение (перевод): /confirm_payment <identifier> <amount>."""
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
     args = message.text.split()[1:]
@@ -74,13 +74,11 @@ async def confirm_payment_handler(message: Message):
         return await message.answer("Usage: /confirm_payment <identifier> <amount>")
     identifier = args[0]
     try:
-        amount = Decimal(args[1])
-        if amount <= Decimal("0"):
-            raise ValueError
+        amount = int(args[1])
         user = await get_user_by_identifier(identifier)
         if not user:
             return await message.answer("Пользователь не найден по identifier.")
-        current_month = datetime.now().strftime("%Y-%m")
+        current_month = datetime.datetime.now().strftime("%Y-%m")
         if await confirm_payment(user.id, amount, current_month, message.from_user.username):
             await message.answer("Платёж подтверждён.")
             await message.bot.send_message(user.telegram_id,
@@ -98,11 +96,36 @@ async def set_fee_handler(message: Message):
     if not args:
         return await message.answer("Usage: /set_fee <new_fee>")
     try:
-        new_fee = float(args[0])
-        config.update_fee(new_fee) # Обновляем через метод
+        new_fee = int(args[0])
+        config.update_fee(new_fee)  # Обновляем через метод
         await message.answer(f"Новая цена: {new_fee} руб./мес.")
     except ValueError:
         await message.answer("Неверная сумма.")
+
+
+@router.message(Command("daily_check"))
+async def manual_daily_check(message: Message):
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    await daily_check(message.bot)  # Передаём bot
+    await message.answer("Daily check completed.")
+
+
+@router.message(Command("admin"))
+async def manual_daily_check(message: Message):
+    """Выводит информацию о боте и примеры команд."""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    response = (
+            "Команды для админов:" +
+            "/daily_check - сделать срочную проверку счетов (высылается напоминание для должников / проходят оплаты в день сбора)\n" +
+            "/list_mappings - вывести таблицу сопоставлений никнеймов и id и юзернеймов\n" +
+            "/set_fee <new_fee> - выставить новое значение платы" +
+            "/confirm_payment <tg_id|nickname> <amount> - подтвердить перевод, добавить деньги на счёт человека в боте\n" +
+            "/add_key <tg_id|nickname> <key_text> - добавить ключ человеку или добавить в очередь на добавление, если он еще не зарегистрировался (в таком случае ключ будет мгновенно добавлен при регистрации чела)\n" +
+            "/generate_invite <None|nickname> - сгенерировать инвайт код для нового пользователя. Желательно указать никнейм для нового человека для удобной работы\n"
+    )
+    await message.answer(response)
 
 
 @router.message(Command("list_mappings"))
@@ -115,7 +138,7 @@ async def list_mappings_handler(message: Message):
         users = result.scalars().all()
     if not users:
         return await message.answer("Нет пользователей.")
-    table = "| Nickname | TG ID | Username |\n|----------|-------|----------|\n"
+    table = "| Nickname | TG ID | Username |\n"
     for user in users:
         table += f"| {user.nickname or 'N/A'} | {user.telegram_id} | {user.username or 'N/A'} |\n"
     await message.answer(table, parse_mode="Markdown")

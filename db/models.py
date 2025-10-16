@@ -1,8 +1,6 @@
-from decimal import Decimal
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.types import DECIMAL
 
 Base = declarative_base()
 
@@ -15,10 +13,8 @@ class User(Base):
     telegram_id = Column(Integer, unique=True, index=True, nullable=False)
     username = Column(String, nullable=True)
     nickname = Column(String, unique=True, index=True, nullable=True)  # Ник от админа, unique
-    is_admin = Column(Boolean, default=False)
-    balance = Column(DECIMAL(precision=10, scale=2), default=Decimal("0.00"))
+    balance = Column(Integer, default=0)
     registered_at = Column(DateTime, default=datetime.now(timezone.utc))
-
     keys = relationship("Key", back_populates="user")
     payments = relationship("Payment", back_populates="user")
 
@@ -65,7 +61,6 @@ class Payment(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     month_year = Column(String, nullable=False)
     paid = Column(Boolean, default=False)
-    amount = Column(DECIMAL(precision=10, scale=2), default=Decimal("0.00"))
-    confirmed_at = Column(DateTime, nullable=True)
+    amount = Column(Integer, default=0)
 
     user = relationship("User", back_populates="payments")

@@ -1,7 +1,7 @@
 import logging
 
-from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram import Router
+from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -44,14 +44,15 @@ async def start_handler(message: Message, state: FSMContext):
             nickname=nickname  # Теперь из config/fallback
         )
         if user_id:
-            await message.answer("Авторегистрация админа успешна! Добро пожаловать. Для помощи используйте /help")
+            await message.answer("Авторегистрация админа успешна! Добро пожаловать."
+                                 "\nДля помощи по боту используйте /help")
         else:
             await message.answer("Ошибка авторегистрации админа.")
         return
 
     # Для обычных — invite
     await state.set_state(Registration.invite_code)
-    await message.answer("Введите invite-код для регистрации.")
+    await message.answer("Введите invite-код для регистрации (вам должны были прислать его)")
 
 
 @router.message(Registration.invite_code)
@@ -66,7 +67,8 @@ async def process_invite(message: Message, state: FSMContext):
             if await mark_invite_used(code, message.from_user.id):
                 moved_count = await move_keys_to_user(invite.nickname, user_id)
                 await state.clear()
-                response = "Регистрация успешна! Добро пожаловать."
+                response = ("Регистрация успешна! Добро пожаловать ☺️\n"
+                            "Для помощи по боту используйте /help")
                 if moved_count > 0:
                     response += f"\nВам автоматически добавлено {moved_count} ключ(ей) из очереди."
                 await message.answer(response)
@@ -95,8 +97,8 @@ async def keys_handler(message: Message):
         return await message.answer("Вы не зарегистрированы.")
     keys = await get_user_keys(user.id)
     if not keys:
-        return await message.answer("У вас нет ключей.")
-    response = ("Ваши ключи:\n\n" +
+        return await message.answer("У вас нет ключей((( Попросите администраторов добавить их вам")
+    response = ("Ваши ключи 🔑:\n\n" +
                 "\n\n".join([f"{i + 1} Ключ:\n```{escape_markdown_v2(k.key_text)}```" for i, k in enumerate(keys)]))
     await message.answer(response, parse_mode="MarkdownV2")
 
@@ -109,14 +111,14 @@ async def payments_handler(message: Message):
         return await message.answer("Вы не зарегистрированы.")
     payments = await get_user_payments(user.id)
     response = (f""
-                f"Ваш баланс: {user.balance} руб.\n"
-                f"Текущая цена: {config.MONTHLY_FEE} руб./мес.\n"
+                f"💰 Ваш баланс 💰: {user.balance} руб.\n"
+                f"Текущая сумма сбора: {config.MONTHLY_FEE} руб./мес.\n"
                 f"Номера для перевода: {', '.join(config.ADMIN_PHONES)}\n"
-                f"Текущий день месяца начала сбора: {config.PAYMENT_DAY}\n"
+                f"Текущий день месяца для сбора: {config.PAYMENT_DAY}\n"
                 f"\n"
                 f"История оплат:\n")
     for p in payments:
-        status = "Оплачено" if p.paid else "Не оплачено"
+        status = "Оплачено ✅" if p.paid else "Не оплачено ❌"
         response += f"{p.month_year}: {status} ({p.amount} руб.)\n"
     await message.answer(response)
 
@@ -124,7 +126,7 @@ async def payments_handler(message: Message):
 @router.message(Command("guide"))
 async def guide_handler(message: Message):
     """Отправить ссылку на help gist."""
-    await message.answer(f"Гайд по подключению: {config.HELP_GIST_URL}")
+    await message.answer(f"📖 Гайд по подключению 📖: {config.HELP_GIST_URL}")
 
 
 @router.message(Command("help"))
@@ -134,20 +136,14 @@ async def help_bot_handler(message: Message):
     Информация о боте:
     Это приватный прокси-сервис бот. Регистрация только по invite-коду от админа.
     Ключи доступны всегда, оплаты — для напоминаний (автосписание в день платежа).
+    Счёт может быть отрицательным, если оплата задержана.   
 
     Команды для пользователей:
-    /keys — Показать мои ключи
-    /payments — Баланс и история.
-    /help — Помощь по использованию
-    /config — Ссылка на конфиг для роутинга (маршрутизации) на Nekoray
-    /guide — Ссылка на гайд по подключению ключей
-
-    Для админов:
-    /generate_invite <nickname>
-    /add_key <identifier> <key>
-    /confirm_payment <tg_id | nickname> <amount>
-    /set_fee <new_fee>
-    /list_mappings
+    /keys — 🔑 Показать мои ключи 
+    /payments — 💰 Баланс и информация об оплате 
+    /help — ℹ️ Помощь по использованию
+    /config — ⚙️ Ссылка на конфиг для роутинга (маршрутизации) на Nekoray
+    /guide — 📖 Ссылка на гайд по подключению ключей
     """
     await message.answer(response)
 

@@ -1,57 +1,85 @@
 import logging
-from datetime import datetime, timedelta
-from decimal import Decimal
+from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
-from db.database import AsyncSessionLocal, update_balance, get_or_create_payment, get_session
-from db.models import User, Payment  # Для query
+from db.database import update_balance, get_or_create_payment, get_session, close_payment
+from db.models import User
 from config import config
 
-# Нужно bot instance - передадим при init
+from dotenv import load_dotenv
 
+load_dotenv()
 scheduler = AsyncIOScheduler()
 
 
 async def daily_check(bot):
-    """Ежедневная проверка: списания и напоминания."""
+    """Ежедневная проверка: списания и напоминания только в день оплаты (PAYMENT_DAY).
+
+    Логика:
+    - Вычисляем days_to_payment для проверки дня оплаты.
+    - Для каждого пользователя:
+      - Получаем или создаём payment для текущего месяца.
+      - Если день оплаты:
+        - Если средств хватает и не оплачено: списываем, отмечаем paid=True, commit.
+        - Если средств не хватает и не оплачено: отправляем напоминание.
+    - Добавлены логи для отладки и try-except для безопасности.
+    - Анализ: После commit объекты могут стать detached, поэтому сохраняем нужные значения (user_id, telegram_id, needed) до commit.
+    """
+    logging.info(f"Daily check started at {datetime.now(timezone.utc)}")
     now = datetime.now()
     current_month = now.strftime("%Y-%m")
 
-    # Если сегодня payment_day - попробовать списать
-    if now.day == config.PAYMENT_DAY:
-        async with (await get_session()) as session:
-            users = await session.execute(select(User))
-            for user in users.scalars().all():
-                payment = await get_or_create_payment(user.id, current_month)
-                if not payment.paid and user.balance >= Decimal(str(config.MONTHLY_FEE)):
-                    user.balance -= Decimal(str(config.MONTHLY_FEE))
-                    payment.paid = True
-                    payment.amount = Decimal(str(config.MONTHLY_FEE))
-                    payment.confirmed_at = now
-                    await session.commit()
-                    logging.info(f"Charged {config.MONTHLY_FEE} for user {user.id}")
-                    if user.balance < 0:
-                        logging.warning(f"Negative balance after charge: {user.balance}")
+    logging.info(f"Current day: {now.day}, Payment day: {config.PAYMENT_DAY}")
 
-    # Проверка напоминаний для всех users
-    payment_date = datetime(now.year, now.month, config.PAYMENT_DAY)
-    days_to_payment = (payment_date - now).days
-    async with (await get_session()) as session:
+    # Открываем сессию
+    session = await get_session()
+
+    try:
         users = await session.execute(select(User))
         for user in users.scalars().all():
-            payment = await get_or_create_payment(user.id, current_month)
-            if not payment.paid:
-                needed = Decimal(str(config.MONTHLY_FEE)) - user.balance
-                if needed > 0:
-                    # Условие для напоминания
-                    if days_to_payment <= config.REMIND_BEFORE_DAYS or (now - (
-                            payment.confirmed_at or now - timedelta(days=config.REMIND_INTERVAL_DAYS + 1))) >= timedelta(
-                        days=config.REMIND_INTERVAL_DAYS):
-                        await bot.send_message(user.telegram_id,
-                                               f"Напоминание: Недостаёт {needed} руб. для оплаты за {current_month}. Пополните на {', '.join(ADMIN_PHONES)}.")
-                        # Update last remind time? Можно добавить поле last_remind в Payment
-                        payment.confirmed_at = now  # Reuse для last_remind, или добавь поле
+            user_id = user.id  # Сохраняем id заранее
+            telegram_id = user.telegram_id  # Сохраняем telegram_id заранее
+            logging.info(f"Processing User {user_id}: Balance {user.balance}, Monthly fee {config.MONTHLY_FEE}")
+
+            payment = await get_or_create_payment(user_id, current_month)
+            payment_amount = payment.amount
+
+            logging.info(f"Processing payment for {current_month}: Paid {payment.paid}, Amount {payment.amount}")
+
+            # Проверяем, день оплаты ли. Если да, то списываем плату у человека, если он еще не оплатил
+            # (хотя скорее всего, из-за вызова функции 1 раз в день, он еще не успеет оплатить)
+            if datetime.now().day == config.PAYMENT_DAY and not payment.paid:
+                try:
+                    # Списание, (даже если средств хватает)
+                    if not payment.paid:
+                        new_balance = user.balance - payment_amount
+
+                        await update_balance(user_id, -payment_amount)
+                        await session.refresh(user)  # синхронизируем изменения, которые были закоммичены в user
+                        await close_payment(user_id, current_month)
+
+                        logging.info(f"Charged {payment_amount} for user {user_id}, new balance {new_balance}")
+                        await bot.send_message(
+                            telegram_id,
+                            f"Списано {payment_amount} руб. за {current_month}. Баланс: {new_balance} руб."
+                        )
+                except Exception as e:
+                    await session.rollback()
+                    logging.error(f"Error processing user {user_id}: {str(e)}")
+
+            # Если баланс человека отрицательный - напоминаем о долге
+            await session.refresh(user)
+            if user.balance < 0:
+                needed = -user.balance
+                logging.info(f"Debt for user {user_id}: {needed} on {now}")
+                await bot.send_message(
+                    telegram_id,
+                    f"🔔 Напоминание 🔔: отрицательный баланс, пополните счёт на {needed} руб. (/payments) 🙃\n"
+                )
+                logging.info(f"Sent reminder to user {user_id}, needed {needed}")
+    finally:
+        await session.close()  # Закрываем сессию явно для безопасности
 
 
 def init_scheduler(bot):

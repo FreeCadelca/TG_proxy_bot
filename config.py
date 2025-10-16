@@ -19,20 +19,16 @@ class Config:
             raise ValueError("ADMIN_IDS не заданы в .env")
 
         self.ADMIN_NICKNAMES = [nick.strip() for nick in os.getenv("ADMIN_NICKNAMES", "").split(",") if nick]
-
         self.DB_URL = os.getenv("DB_URL", "sqlite+aiosqlite:///bot.db")
-
-        self.MONTHLY_FEE = float(os.getenv("MONTHLY_FEE", "65.0"))
+        self.MONTHLY_FEE = int(os.getenv("MONTHLY_FEE", "65.0"))
         self.PAYMENT_DAY = int(os.getenv("PAYMENT_DAY", "24"))
         self.REMIND_BEFORE_DAYS = int(os.getenv("REMIND_BEFORE_DAYS", "3"))
         self.REMIND_INTERVAL_DAYS = int(os.getenv("REMIND_INTERVAL_DAYS", "7"))
-
         self.ADMIN_PHONES = os.getenv("ADMIN_PHONES", "").split(",")
-
         self.HELP_GIST_URL = os.getenv("HELP_GIST_URL", "https://gist.github.com/your/default-help")
         self.CONFIG_GIST_URL = os.getenv("CONFIG_GIST_URL", "https://gist.github.com/your/default-config")
 
-    def update_fee(self, new_fee: float):
+    def update_fee(self, new_fee: int):
         """Обновить MONTHLY_FEE в runtime, .env и os.environ."""
         if new_fee <= 0:
             raise ValueError("Цена должна быть больше 0")
