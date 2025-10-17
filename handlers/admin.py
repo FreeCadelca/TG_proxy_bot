@@ -138,7 +138,8 @@ async def list_mappings_handler(message: Message):
         users = result.scalars().all()
     if not users:
         return await message.answer("Нет пользователей.")
-    table = "| Nickname | TG ID | Username |\n"
+    table = ("| Nickname | TG_ID | Username |\n"
+             "---------------------------------------------------\n")  # У тг свой размер для "-", поэтому приходится их больше писать для соответствия
     for user in users:
-        table += f"| {user.nickname or 'N/A'} | {user.telegram_id} | {user.username or 'N/A'} |\n"
-    await message.answer(table, parse_mode="Markdown")
+        table += f"| {user.nickname or 'N/A'} | {user.telegram_id} | {user.username or 'N/A'} | {user.balance} |\n"
+    await message.answer(table)
