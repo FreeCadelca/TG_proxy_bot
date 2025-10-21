@@ -172,23 +172,7 @@ async def guide_handler(message: Message):
 @router.message(Command("help"))
 async def help_bot_handler(message: Message):
     """Выводит информацию о боте и примеры команд."""
-    response = """
-    Информация о боте:
-    Это приватный прокси-сервис бот. Регистрация только по invite-коду от админа.
-    Ключи доступны всегда, оплаты — для напоминаний (автосписание в день платежа).
-    Счёт может быть отрицательным, если оплата задержана.
-    
-    В боте настроены автоматические напоминания. 
-    В день сбора происходит списание средств, при отрицательном счёте будут приходить напоминания об оплате
-
-    Команды для пользователей:
-    /keys — 🔑 Показать мои ключи 
-    /payments — 💰 Баланс и информация об оплате 
-    /help — ℹ️ Помощь по использованию
-    /config — ⚙️ Ссылка на конфиг для роутинга (маршрутизации) на Nekoray
-    /guide — 📖 Ссылка на гайд по подключению ключей
-    """
-    await message.answer(response, reply_markup=main_keyboard)
+    await message.answer(config.HELP_TEXT, reply_markup=main_keyboard)
 
 
 @router.message(Command("config"))

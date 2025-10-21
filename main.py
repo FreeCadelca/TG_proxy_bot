@@ -7,6 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from config import config
 from db.database import init_db
 from utils.scheduler import init_scheduler
+from handlers.admin import init_bot_instance_admin
 from handlers.user import router as user_router
 from handlers.admin import router as admin_router
 
@@ -29,6 +30,7 @@ async def main():
 
     await init_db()  # Create tables
     init_scheduler(bot)  # Start scheduler
+    init_bot_instance_admin(bot)
 
     logging.info("Bot started.")
     await dp.start_polling(bot)

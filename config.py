@@ -5,6 +5,14 @@ import logging
 
 load_dotenv()
 
+def read_text_from_file(filepath: str) -> str:
+    filepath = filepath.replace('/', os.sep)
+    try:
+        with open(filepath, mode="r", encoding="utf-8") as f:
+            return '\n'.join([i for i in f.readlines()])
+    except Exception as e:
+        logging.error(f"Error while processing reading from file: {e}")
+
 
 class Config:
     """Динамичный конфиг с обновлением .env и runtime."""
@@ -27,6 +35,8 @@ class Config:
         self.ADMIN_PHONES = os.getenv("ADMIN_PHONES", "").split(",")
         self.HELP_GIST_URL = os.getenv("HELP_GIST_URL", "https://gist.github.com/your/default-help")
         self.CONFIG_GIST_URL = os.getenv("CONFIG_GIST_URL", "https://gist.github.com/your/default-config")
+        self.ADMIN_HELP_TEXT = read_text_from_file("payloads/admin_help_text.txt")
+        self.HELP_TEXT = read_text_from_file("payloads/help_text.txt")
 
     def update_fee(self, new_fee: int):
         """Обновить MONTHLY_FEE в runtime, .env и os.environ."""
@@ -36,6 +46,15 @@ class Config:
         os.environ['MONTHLY_FEE'] = str(new_fee)  # Обновляем для всех os.getenv
         set_key('.env', 'MONTHLY_FEE', str(new_fee))  # Обновляем файл
         logging.info(f"Updated MONTHLY_FEE to {new_fee}")
+
+    def update_payment_day(self, new_day: int):
+        """Обновить PAYMENT_DAY в runtime, .env и os.environ."""
+        if new_day <= 0 or new_day >= 29:
+            raise ValueError("Новый день месяца должен быть валидный")
+        self.MONTHLY_FEE = new_day
+        os.environ['PAYMENT_DAY'] = str(new_day)  # Обновляем для всех os.getenv
+        set_key('.env', 'PAYMENT_DAY', str(new_day))  # Обновляем файл
+        logging.info(f"Updated PAYMENT_DAY to {new_day}")
 
 
 # Создаём экземпляр (используем как config.MONTHLY_FEE)
