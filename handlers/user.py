@@ -138,9 +138,12 @@ async def keys_handler(message: Message):
     keys = await get_user_keys(user.id)
     if not keys:
         return await message.answer("У вас нет ключей((( Попросите администраторов добавить их вам")
-    response = ("Ваши ключи 🔑:\n\n" +
-                "\n\n".join([f"{i + 1} Ключ:\n```{escape_markdown_v2(k.key_text)}```" for i, k in enumerate(keys)]))
-    await message.answer(response, parse_mode="MarkdownV2", reply_markup=main_keyboard)
+
+    responses = ["Ваши ключи 🔑:"]
+    responses += [f"{i + 1} Ключ:\n```{escape_markdown_v2(k.key_text)}```" for i, k in enumerate(keys)]
+
+    for response in responses:
+        await message.answer(response, parse_mode="MarkdownV2", reply_markup=main_keyboard)
 
 
 @router.message(Command("payments"))
