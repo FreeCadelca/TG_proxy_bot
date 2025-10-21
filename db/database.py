@@ -149,7 +149,7 @@ async def mark_invite_used(code: str, telegram_id: int):
 
 # --- Key operations ---
 
-async def add_key(user_id: int, key_text: str) -> bool:
+async def add_key(user_id: int, key_text: str, tag=None) -> bool:
     """Добавить ключ (check на лимит 5)."""
     async with AsyncSessionLocal() as session:
         # Переносим существующие ключи из KeyInQueue, если есть (для nickname)
@@ -161,7 +161,7 @@ async def add_key(user_id: int, key_text: str) -> bool:
         if count >= 5:
             logging.warning(f"Key limit reached for user {user_id}")
             return False
-        key = Key(user_id=user_id, key_text=key_text)
+        key = Key(user_id=user_id, key_text=key_text, tag=tag)
         session.add(key)
 
         try:
@@ -181,10 +181,10 @@ async def get_user_keys(user_id: int) -> List[Key]:
         return result.scalars().all()
 
 
-async def add_key_to_queue(nickname: str, key_text: str) -> bool:
+async def add_key_to_queue(nickname: str, key_text: str, tag=None) -> bool:
     """Добавить ключ в очередь для nickname."""
     async with AsyncSessionLocal() as session:
-        key = KeyInQueue(nickname=nickname, key_text=key_text)
+        key = KeyInQueue(nickname=nickname, key_text=key_text, tag=tag)
         session.add(key)
         try:
             await session.commit()
@@ -211,11 +211,11 @@ async def move_keys_to_user(nickname: str, user_id: int) -> int:
         for key_in_queue in keys:
             # Проверяем лимит 3 ключа
             current_count = await session.scalar(select(func.count()).select_from(Key).where(Key.user_id == user_id))
-            if current_count >= 3:
+            if current_count >= 5:
                 logging.warning(f"Key limit reached for user_id {user_id}, skipping key transfer")
                 break
             # Переносим
-            new_key = Key(user_id=user_id, key_text=key_in_queue.key_text)
+            new_key = Key(user_id=user_id, key_text=key_in_queue.key_text, tag=key_in_queue.tag)
             session.add(new_key)
             await session.delete(key_in_queue)  # Удаляем из очереди
             moved_count += 1

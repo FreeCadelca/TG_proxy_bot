@@ -138,8 +138,15 @@ async def keys_handler(message: Message):
     keys = await get_user_keys(user.id)
     if not keys:
         return await message.answer("У вас нет ключей((( Попросите администраторов добавить их вам")
-    response = ("Ваши ключи 🔑:\n\n" +
-                "\n\n".join([f"{i + 1} Ключ:\n```{escape_markdown_v2(k.key_text)}```" for i, k in enumerate(keys)]))
+
+    response = "Ваши ключи 🔑:\n\n"
+    key_rendered = []
+    for i, k in enumerate(keys):
+        if k.tag:
+            key_rendered.append(f"{i + 1} ключ (tag: {k.tag}):\n```{escape_markdown_v2(k.key_text)}```")
+        else:
+            key_rendered.append(f"{i + 1} ключ:\n```{escape_markdown_v2(k.key_text)}```")
+    response += "\n\n".join(key_rendered)
     await message.answer(response, parse_mode="MarkdownV2", reply_markup=main_keyboard)
 
 

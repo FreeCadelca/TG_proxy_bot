@@ -8,7 +8,7 @@ import datetime
 
 from sqlalchemy import select
 
-from db.database import get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue, get_session
+from db.database import get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue, get_session, get_user_by_tg_id, get_user_keys
 from db.models import User  # Для list_mappings
 from config import config
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
@@ -42,28 +42,29 @@ async def generate_invite_handler(message: Message):
 
 @router.message(Command("add_key"))
 async def add_key_handler(message: Message):
-    """Добавить ключ: /add_key <identifier> <key_text>."""
+    """Добавить ключ: /add_key <identifier> <Tag|None=_> <key_text>."""
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
     args = message.text.split()[1:]
-    if len(args) < 2:
-        return await message.answer("Usage: /add_key <identifier> <key_text>")
+    if len(args) < 3:
+        return await message.answer("Usage: /add_key <identifier> <Tag|None=_> <key_text>")
     identifier = args[0]
-    key_text = " ".join(args[1:])
+    tag = None if args[1] == '_' else args[1]
+    key_text = " ".join(args[2:])
 
     user = await get_user_by_identifier(identifier)
     if not user:
         # Пользователь не найден — добавляем в KeyInQueue
         if not isinstance(identifier, str):  # Если identifier — tg_id (int), ошибка
             return await message.answer("Пользователь не найден, используйте nickname для очереди.")
-        if await add_key_to_queue(identifier, key_text):
-            await message.answer(f"Ключ добавлен в очередь для {identifier}.")
+        if await add_key_to_queue(identifier, key_text, tag=tag):
+            await message.answer(f"Ключ добавлен в очередь для {identifier}, tag={tag}.")
         else:
             await message.answer("Ошибка добавления ключа в очередь.")
     else:
         # Пользователь существует — добавляем в Key (move_keys_to_user вызывается внутри)
-        if await add_key(user.id, key_text):
-            await message.answer(f"Ключ добавлен для {identifier}.")
+        if await add_key(user.id, key_text, tag=tag):
+            await message.answer(f"Ключ добавлен для {identifier}, tag={tag}.")
         else:
             await message.answer("Лимит ключей достигнут.")
 
@@ -172,8 +173,8 @@ async def list_mappings_handler(message: Message):
 
 
 @router.message(Command("broadcast"))
-async def list_mappings_handler(message: Message):
-    """Рассылка объявления всем пользователям бота"""
+async def broadcast_handler(message: Message):
+    """Рассылка объявления всем пользователям бота: /broadcast <message>"""
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
     args = message.text.split(maxsplit=1)[1:]
@@ -193,6 +194,34 @@ async def list_mappings_handler(message: Message):
             pass
 
     logging.info(f"Broadcasted to {count} users next message: {boradcast_message}")
+
+
+@router.message(Command("see_keys"))
+async def see_keys_handler(message: Message):
+    """Посмотреть ключи указанного пользователя: /see_keys <identifier>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    args = message.text.split()
+    if len(args) < 1:
+        return await message.answer("Usage: /see_keys <identifier>")
+    user_identifier = args[0]
+
+    user = await get_user_by_identifier(user_identifier)
+    if not user:
+        return await message.answer("Пользователь не найден")
+    keys = await get_user_keys(user.id)
+    if not keys:
+        return await message.answer("У пользователя нет ключей")
+
+    response = f"Ключи пользователя {user_identifier}:\n\n"
+    key_rendered = []
+    for i, k in enumerate(keys):
+        if k.tag:
+            key_rendered.append(f"{i + 1} ключ (tag: {k.tag}):\n```{escape_markdown_v2(k.key_text)}```")
+        else:
+            key_rendered.append(f"{i + 1} ключ:\n```{escape_markdown_v2(k.key_text)}```")
+    response += "\n\n".join(key_rendered)
+    await message.answer(response, parse_mode="MarkdownV2")
 
 
 def init_bot_instance_admin(bot: aiogram.Bot):
