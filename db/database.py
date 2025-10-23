@@ -33,6 +33,13 @@ async def get_user_by_tg_id(tg_id: int) -> User | None:
         return result.scalar_one_or_none()
 
 
+async def get_user_by_user_id(user_id: int) -> User | None:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
+
+
+
 async def get_user_by_nickname(nickname: str) -> User | None:
     """Получить пользователя по nickname."""
     async with AsyncSessionLocal() as session:
@@ -174,10 +181,56 @@ async def add_key(user_id: int, key_text: str, tag=None) -> bool:
             return False
 
 
+async def edit_key(key_id: int, new_user_id: int, new_key_text: str, new_tag=None) -> bool:
+    """Редактировать поля ключа"""
+    async with AsyncSessionLocal() as session:
+        key = await session.get(Key, key_id)
+        key.user_id = new_user_id
+        key.key_text = new_key_text
+        key.tag = new_tag
+        key.added_at = datetime.now(timezone.utc)
+
+        try:
+            await session.commit()
+            logging.info(f"Key id = {key_id} edited")
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logging.warning(f"Failed to edit key with id = {key_id}")
+            return False
+
+
+async def remove_key(key_id: int) -> bool:
+    """Удалить ключ по id"""
+    async with AsyncSessionLocal() as session:
+        key = await session.get(Key, key_id)
+        if not key:
+            raise ValueError(f"Key {key_id} not found")
+
+        # Удаляем ключ
+        await session.delete(key)
+
+        try:
+            await session.commit()
+            logging.info(f"Key id = {key_id} removed")
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logging.warning(f"Failed to edit key with id = {key_id}")
+            return False
+
+
 async def get_user_keys(user_id: int) -> List[Key]:
     """Получить ключи пользователя."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Key).where(Key.user_id == user_id))
+        return result.scalars().all()
+
+
+async def get_key_by_id(key_id: int) -> List[Key]:
+    """Получить ключи пользователя."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Key).where(Key.id == key_id))
         return result.scalars().all()
 
 
@@ -256,7 +309,6 @@ async def close_payment(user_id: int, month_year: str) -> None:
         payment.paid = True
         # payment.confirmed_at = datetime.now()
         await session.commit()
-
 
 
 async def confirm_payment(user_id: int, amount: int, month_year: str, admin_username: str) -> bool:

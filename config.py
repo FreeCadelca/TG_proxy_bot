@@ -5,11 +5,12 @@ import logging
 
 load_dotenv()
 
+
 def read_text_from_file(filepath: str) -> str:
     filepath = filepath.replace('/', os.sep)
     try:
         with open(filepath, mode="r", encoding="utf-8") as f:
-            return '\n'.join([i for i in f.readlines()])
+            return ''.join([i for i in f.readlines()])
     except Exception as e:
         logging.error(f"Error while processing reading from file: {e}")
 
@@ -51,7 +52,7 @@ class Config:
         """Обновить PAYMENT_DAY в runtime, .env и os.environ."""
         if new_day <= 0 or new_day >= 29:
             raise ValueError("Новый день месяца должен быть валидный")
-        self.MONTHLY_FEE = new_day
+        self.PAYMENT_DAY = new_day
         os.environ['PAYMENT_DAY'] = str(new_day)  # Обновляем для всех os.getenv
         set_key('.env', 'PAYMENT_DAY', str(new_day))  # Обновляем файл
         logging.info(f"Updated PAYMENT_DAY to {new_day}")

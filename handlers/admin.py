@@ -8,7 +8,9 @@ import datetime
 
 from sqlalchemy import select
 
-from db.database import get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue, get_session, get_user_by_tg_id, get_user_keys
+from db.database import (get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue,
+                         get_session, get_user_keys, get_key_by_id, edit_key, remove_key,
+                         get_user_by_user_id)
 from db.models import User  # Для list_mappings
 from config import config
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
@@ -118,7 +120,7 @@ async def set_payment_day_handler(message: Message):
         return await message.answer("Usage: /set_payment_day <new_day>")
     try:
         new_day = int(args[0])
-        config.update_fee(new_day)  # Обновляем через метод
+        config.update_payment_day(new_day)  # Обновляем через метод
         await message.answer(f"Новый день месяца для сбора: {new_day}")
     except ValueError:
         await message.answer("Неверный день.")
@@ -169,7 +171,7 @@ async def list_mappings_handler(message: Message):
             else 'N/A'.ljust(users_col_width["username"])
         user_balance = str(user.balance).ljust(users_col_width["balance"])
         table += f"{user_id} {user_nickname} {user_telegram_id} {user_username} {user_balance}\n"
-    await message.answer('```' + escape_markdown_v2(table) + '```', parse_mode="MarkdownV2")
+    await message.answer('```' + table + '```', parse_mode="MarkdownV2")
 
 
 @router.message(Command("broadcast"))
@@ -201,7 +203,7 @@ async def see_keys_handler(message: Message):
     """Посмотреть ключи указанного пользователя: /see_keys <identifier>"""
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
-    args = message.text.split()
+    args = message.text.split()[1:]
     if len(args) < 1:
         return await message.answer("Usage: /see_keys <identifier>")
     user_identifier = args[0]
@@ -213,15 +215,80 @@ async def see_keys_handler(message: Message):
     if not keys:
         return await message.answer("У пользователя нет ключей")
 
-    response = f"Ключи пользователя {user_identifier}:\n\n"
-    key_rendered = []
+    responses = [f"Ключи пользователя {user_identifier}:"]
+
     for i, k in enumerate(keys):
         if k.tag:
-            key_rendered.append(f"{i + 1} ключ (tag: {k.tag}):\n```{escape_markdown_v2(k.key_text)}```")
+            responses.append(f"{i + 1} ключ \(id\={k.id}\) \(tag: {k.tag}\):\n```{escape_markdown_v2(k.key_text)}```")
         else:
-            key_rendered.append(f"{i + 1} ключ:\n```{escape_markdown_v2(k.key_text)}```")
-    response += "\n\n".join(key_rendered)
-    await message.answer(response, parse_mode="MarkdownV2")
+            responses.append(f"{i + 1} ключ \(id\={k.id}\):\n```{escape_markdown_v2(k.key_text)}```")
+    for response in responses:
+        await message.answer(response, parse_mode="MarkdownV2")
+
+
+@router.message(Command("edit_key"))
+async def edit_key_handler(message: Message):
+    """Редактировать ключ с конкретным id: /edit_key <key_id> <new_identifier|~> <new_tag|None=_|~> <key_text|~>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+
+    args = message.text.split()[1:]
+    if len(args) < 4:
+        return await message.answer("Usage: /edit_key <key_id> <new_identifier|~> <new_tag|None=_|~> <key_text|~>")
+    key_id = int(args[0])
+
+
+    # Достаём ключ по id
+    key = await get_key_by_id(key_id)
+    if len(key) < 1:
+        return await message.answer("Нет такого ключа")
+    key = key[0]
+
+    current_user = await get_user_by_user_id(key.user_id)
+    current_user_tg_id = current_user.telegram_id
+
+    # Вычисляем новые параметры (если они '~' - подаём в качестве новых данных такие же старые)
+
+    new_identifier = args[1] if args[1] != '~' else current_user_tg_id
+
+    new_tag = args[2]
+    if new_tag == '~':
+        new_tag = key.tag
+    elif new_tag == '_':
+        new_tag = None
+
+    args[3] = " ".join(args[3:])
+    new_text = args[3] if args[3] != '~' else key.key_text
+
+    print(f"{key_id}\n{new_identifier}\n{new_tag}\n{new_text[-20:]}\n")
+
+    new_user = await get_user_by_identifier(new_identifier)
+    if not new_user:
+        # Пользователь не существует
+        await message.answer(f"Пользователь не найден")
+    else:
+        # Пользователь существует — редактируем ключ
+        if await edit_key(key_id, new_user.id, new_text, new_tag=new_tag):
+            await message.answer(f"Ключ id = {key_id} изменён")
+        else:
+            await message.answer("Возникла ошибка изменения ключа")
+
+
+@router.message(Command("remove_key"))
+async def remove_key_handler(message: Message):
+    """Удалить ключ по id: /remove_key <key_id>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+
+    args = message.text.split()[1:]
+    if len(args) < 1:
+        return await message.answer("Usage: /remove_key <key_id>")
+    key_id = int(args[0])
+
+    if await remove_key(key_id):
+        await message.answer(f"Ключ id = {key_id} успешно удалён")
+    else:
+        await message.answer(f"Не удалось ключ с id = {key_id}")
 
 
 def init_bot_instance_admin(bot: aiogram.Bot):
