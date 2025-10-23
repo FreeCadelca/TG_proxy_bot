@@ -1,3 +1,6 @@
+import logging
+
+import aiogram
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -5,7 +8,9 @@ import datetime
 
 from sqlalchemy import select
 
-from db.database import get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue
+from db.database import (get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue,
+                         get_session, get_user_keys, get_key_by_id, edit_key, remove_key,
+                         get_user_by_user_id)
 from db.models import User  # Для list_mappings
 from config import config
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
@@ -13,6 +18,7 @@ from handlers.user import escape_markdown_v2
 from utils.scheduler import daily_check
 
 router = Router()
+Bot = None
 
 
 async def is_admin(tg_id: int) -> bool:
@@ -38,28 +44,29 @@ async def generate_invite_handler(message: Message):
 
 @router.message(Command("add_key"))
 async def add_key_handler(message: Message):
-    """Добавить ключ: /add_key <identifier> <key_text>."""
+    """Добавить ключ: /add_key <identifier> <Tag|None=_> <key_text>."""
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
     args = message.text.split()[1:]
-    if len(args) < 2:
-        return await message.answer("Usage: /add_key <identifier> <key_text>")
+    if len(args) < 3:
+        return await message.answer("Usage: /add_key <identifier> <Tag|None=_> <key_text>")
     identifier = args[0]
-    key_text = " ".join(args[1:])
+    tag = None if args[1] == '_' else args[1]
+    key_text = " ".join(args[2:])
 
     user = await get_user_by_identifier(identifier)
     if not user:
         # Пользователь не найден — добавляем в KeyInQueue
         if not isinstance(identifier, str):  # Если identifier — tg_id (int), ошибка
             return await message.answer("Пользователь не найден, используйте nickname для очереди.")
-        if await add_key_to_queue(identifier, key_text):
-            await message.answer(f"Ключ добавлен в очередь для {identifier}.")
+        if await add_key_to_queue(identifier, key_text, tag=tag):
+            await message.answer(f"Ключ добавлен в очередь для {identifier}, tag={tag}.")
         else:
             await message.answer("Ошибка добавления ключа в очередь.")
     else:
         # Пользователь существует — добавляем в Key (move_keys_to_user вызывается внутри)
-        if await add_key(user.id, key_text):
-            await message.answer(f"Ключ добавлен для {identifier}.")
+        if await add_key(user.id, key_text, tag=tag):
+            await message.answer(f"Ключ добавлен для {identifier}, tag={tag}.")
         else:
             await message.answer("Лимит ключей достигнут.")
 
@@ -103,8 +110,25 @@ async def set_fee_handler(message: Message):
         await message.answer("Неверная сумма.")
 
 
+@router.message(Command("set_payment_day"))
+async def set_payment_day_handler(message: Message):
+    """Установить новый день сбора: /set_payment_day <new_day>."""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    args = message.text.split()[1:]
+    if not args:
+        return await message.answer("Usage: /set_payment_day <new_day>")
+    try:
+        new_day = int(args[0])
+        config.update_payment_day(new_day)  # Обновляем через метод
+        await message.answer(f"Новый день месяца для сбора: {new_day}")
+    except ValueError:
+        await message.answer("Неверный день.")
+
+
 @router.message(Command("daily_check"))
 async def manual_daily_check(message: Message):
+    """Произвести принудительную проверку платежей (daily_check function)"""
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
     await daily_check(message.bot)  # Передаём bot
@@ -113,19 +137,10 @@ async def manual_daily_check(message: Message):
 
 @router.message(Command("admin"))
 async def manual_daily_check(message: Message):
-    """Выводит информацию о боте и примеры команд."""
+    """Выводит примеры администраторских команд."""
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
-    response = (
-            "Команды для админов:" +
-            "/daily_check - сделать срочную проверку счетов (высылается напоминание для должников / проходят оплаты в день сбора)\n" +
-            "/list_mappings - вывести таблицу сопоставлений никнеймов и id и юзернеймов\n" +
-            "/set_fee <new_fee> - выставить новое значение платы" +
-            "/confirm_payment <tg_id|nickname> <amount> - подтвердить перевод, добавить деньги на счёт человека в боте\n" +
-            "/add_key <tg_id|nickname> <key_text> - добавить ключ человеку или добавить в очередь на добавление, если он еще не зарегистрировался (в таком случае ключ будет мгновенно добавлен при регистрации чела)\n" +
-            "/generate_invite <None|nickname> - сгенерировать инвайт код для нового пользователя. Желательно указать никнейм для нового человека для удобной работы\n"
-    )
-    await message.answer(response)
+    await message.answer(config.ADMIN_HELP_TEXT)
 
 
 @router.message(Command("list_mappings"))
@@ -134,12 +149,146 @@ async def list_mappings_handler(message: Message):
     if not await is_admin(message.from_user.id):
         return await message.answer("Доступ только для админов.")
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(User).order_by(User.nickname))
+        result = await session.execute(select(User).order_by(User.id))
         users = result.scalars().all()
     if not users:
         return await message.answer("Нет пользователей.")
-    table = ("| Nickname | TG_ID | Username |\n"
-             "---------------------------------------------------\n")  # У тг свой размер для "-", поэтому приходится их больше писать для соответствия
+    table = ("ID|Nickname|TG_ID|Username|Balance\n"
+             "")  # У тг свой размер для "-", поэтому приходится их больше писать для соответствия
+    users_col_width = {"id": 0, "nick": 0, "tg_id": 0, "username": 0, "balance": 0}
     for user in users:
-        table += f"| {user.nickname or 'N/A'} | {user.telegram_id} | {user.username or 'N/A'} | {user.balance} |\n"
-    await message.answer(table)
+        users_col_width["id"] = max(users_col_width["id"], len(str(user.id)))
+        users_col_width["nick"] = max(users_col_width["nick"], len(str(user.nickname) or 'N/A'))
+        users_col_width["tg_id"] = max(users_col_width["tg_id"], len(str(user.telegram_id)))
+        users_col_width["username"] = max(users_col_width["username"], len(str(user.username)))
+        users_col_width["balance"] = max(users_col_width["balance"], len(str(user.balance)))
+
+    for user in users:
+        user_id = str(user.id).ljust(users_col_width["id"])
+        user_nickname = str(user.nickname).ljust(users_col_width["nick"])
+        user_telegram_id = str(user.telegram_id).ljust(users_col_width["tg_id"])
+        user_username = str(user.username).ljust(users_col_width["username"]) if user.username \
+            else 'N/A'.ljust(users_col_width["username"])
+        user_balance = str(user.balance).ljust(users_col_width["balance"])
+        table += f"{user_id} {user_nickname} {user_telegram_id} {user_username} {user_balance}\n"
+    await message.answer('```' + table + '```', parse_mode="MarkdownV2")
+
+
+@router.message(Command("broadcast"))
+async def broadcast_handler(message: Message):
+    """Рассылка объявления всем пользователям бота: /broadcast <message>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    args = message.text.split(maxsplit=1)[1:]
+    if len(args) < 1:
+        return await message.answer("Usage: /broadcast <text>")
+    boradcast_message = args[0]
+
+    session = await get_session()
+    users = await session.execute(select(User))
+    count = 0
+    for user in users.scalars().all():
+        try:
+            telegram_id = user.telegram_id  # Сохраняем telegram_id заранее
+            await Bot.send_message(telegram_id, boradcast_message)
+            count += 1
+        except Exception as e:
+            logging.error(e)
+
+    logging.info(f"Broadcasted to {count} users next message: {boradcast_message}")
+
+
+@router.message(Command("see_keys"))
+async def see_keys_handler(message: Message):
+    """Посмотреть ключи указанного пользователя: /see_keys <identifier>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    args = message.text.split()[1:]
+    if len(args) < 1:
+        return await message.answer("Usage: /see_keys <identifier>")
+    user_identifier = args[0]
+
+    user = await get_user_by_identifier(user_identifier)
+    if not user:
+        return await message.answer("Пользователь не найден")
+    keys = await get_user_keys(user.id)
+    if not keys:
+        return await message.answer("У пользователя нет ключей")
+
+    responses = [f"Ключи пользователя {user_identifier}:"]
+
+    for i, k in enumerate(keys):
+        if k.tag:
+            responses.append(f"{i + 1} ключ \(id\={k.id}\) \(tag: {escape_markdown_v2(k.tag)}\):\n```{escape_markdown_v2(k.key_text)}```")
+        else:
+            responses.append(f"{i + 1} ключ \(id\={k.id}\):\n```{escape_markdown_v2(k.key_text)}```")
+    for response in responses:
+        await message.answer(response, parse_mode="MarkdownV2")
+
+
+@router.message(Command("edit_key"))
+async def edit_key_handler(message: Message):
+    """Редактировать ключ с конкретным id: /edit_key <key_id> <new_identifier|~> <new_tag|None=_|~> <key_text|~>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+
+    args = message.text.split()[1:]
+    if len(args) < 4:
+        return await message.answer("Usage: /edit_key <key_id> <new_identifier|~> <new_tag|None=_|~> <key_text|~>")
+    key_id = int(args[0])
+
+
+    # Достаём ключ по id
+    key = await get_key_by_id(key_id)
+    if len(key) < 1:
+        return await message.answer("Нет такого ключа")
+    key = key[0]
+
+    current_user = await get_user_by_user_id(key.user_id)
+    current_user_tg_id = current_user.telegram_id
+
+    # Вычисляем новые параметры (если они '~' - подаём в качестве новых данных такие же старые)
+
+    new_identifier = args[1] if args[1] != '~' else current_user_tg_id
+
+    new_tag = args[2]
+    if new_tag == '~':
+        new_tag = key.tag
+    elif new_tag == '_':
+        new_tag = None
+
+    args[3] = " ".join(args[3:])
+    new_text = args[3] if args[3] != '~' else key.key_text
+
+    new_user = await get_user_by_identifier(new_identifier)
+    if not new_user:
+        # Пользователь не существует
+        await message.answer(f"Пользователь не найден")
+    else:
+        # Пользователь существует — редактируем ключ
+        if await edit_key(key_id, new_user.id, new_text, new_tag=new_tag):
+            await message.answer(f"Ключ id = {key_id} изменён")
+        else:
+            await message.answer("Возникла ошибка изменения ключа")
+
+
+@router.message(Command("remove_key"))
+async def remove_key_handler(message: Message):
+    """Удалить ключ по id: /remove_key <key_id>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+
+    args = message.text.split()[1:]
+    if len(args) < 1:
+        return await message.answer("Usage: /remove_key <key_id>")
+    key_id = int(args[0])
+
+    if await remove_key(key_id):
+        await message.answer(f"Ключ id = {key_id} успешно удалён")
+    else:
+        await message.answer(f"Не удалось ключ с id = {key_id}")
+
+
+def init_bot_instance_admin(bot: aiogram.Bot):
+    global Bot
+    Bot = bot

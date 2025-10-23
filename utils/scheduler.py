@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
@@ -11,6 +11,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 scheduler = AsyncIOScheduler()
+
+
+async def is_nex_day_is_payment():
+    current_date = datetime.now()
+    delta = timedelta(days=1)
+    return (current_date + delta).day == config.PAYMENT_DAY
 
 
 async def daily_check(bot):
@@ -66,7 +72,21 @@ async def daily_check(bot):
                         )
                 except Exception as e:
                     await session.rollback()
-                    logging.error(f"Error processing user {user_id}: {str(e)}")
+                    logging.error(f"Error daily processing (pd) user {user_id}: {str(e)}")
+
+            # Проверяем, следующий день - день оплаты? Если да и у пользователя не хватает средств,
+            # то напоминаем ему о пополнении на недостающую сумму
+            if await is_nex_day_is_payment():
+                try:
+                    if user.balance < config.MONTHLY_FEE:
+                        logging.info(f"Sent reminder (nd) to user {user_id} for user")
+                        await bot.send_message(
+                            telegram_id,
+                            f"🔔 Напоминание 🔔: завтра произойдет списание на сумму {payment_amount} руб. за {current_month}. \n"
+                            f"Ваш баланс: {user.balance} руб., текущая сумма сбора: {config.MONTHLY_FEE} руб."
+                        )
+                except Exception as e:
+                    logging.error(f"Error daily processing (nd) user {user_id}: {str(e)}")
 
             # Если баланс человека отрицательный - напоминаем о долге
             await session.refresh(user)
@@ -84,5 +104,5 @@ async def daily_check(bot):
 
 def init_scheduler(bot):
     """Инициализация scheduler."""
-    scheduler.add_job(daily_check, 'cron', hour=0, minute=0, args=(bot,))
+    scheduler.add_job(daily_check, 'cron', hour=15, minute=0, args=(bot,))
     scheduler.start()

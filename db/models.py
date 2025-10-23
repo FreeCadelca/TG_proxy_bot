@@ -32,13 +32,14 @@ class Invite(Base):
 
 
 class Key(Base):
-    """Модель ключей (до 3 на user)."""
+    """Модель ключей"""
     __tablename__ = "keys"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     key_text = Column(Text, nullable=False)
     added_at = Column(DateTime, default=datetime.now(timezone.utc))
+    tag = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="keys")
 
@@ -51,6 +52,7 @@ class KeyInQueue(Base):
     nickname = Column(String, index=True, nullable=False)  # Ник, к которому привязан ключ
     key_text = Column(Text, nullable=False)  # До 4000 символов
     added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    tag = Column(Text, nullable=True)
 
 
 class Payment(Base):
