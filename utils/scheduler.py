@@ -76,7 +76,7 @@ async def daily_check(bot):
 
             # Проверяем, следующий день - день оплаты? Если да и у пользователя не хватает средств,
             # то напоминаем ему о пополнении на недостающую сумму
-            if is_nex_day_is_payment:
+            if await is_nex_day_is_payment():
                 try:
                     if user.balance < config.MONTHLY_FEE:
                         logging.info(f"Sent reminder (nd) to user {user_id} for user")
@@ -104,5 +104,5 @@ async def daily_check(bot):
 
 def init_scheduler(bot):
     """Инициализация scheduler."""
-    scheduler.add_job(daily_check, 'cron', hour=0, minute=0, args=(bot,))
+    scheduler.add_job(daily_check, 'cron', hour=15, minute=0, args=(bot,))
     scheduler.start()

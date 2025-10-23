@@ -143,7 +143,7 @@ async def keys_handler(message: Message):
 
     for i, k in enumerate(keys):
         if k.tag:
-            responses.append(f"{i + 1} ключ \(tag: {k.tag}\):\n```{escape_markdown_v2(k.key_text)}```")
+            responses.append(f"{i + 1} ключ \(tag: {escape_markdown_v2(k.tag)}\):\n```{escape_markdown_v2(k.key_text)}```")
         else:
             responses.append(f"{i + 1} ключ:\n```{escape_markdown_v2(k.key_text)}```")
     for response in responses:

@@ -190,10 +190,10 @@ async def broadcast_handler(message: Message):
     for user in users.scalars().all():
         try:
             telegram_id = user.telegram_id  # Сохраняем telegram_id заранее
-            Bot.send_message(telegram_id, boradcast_message)
+            await Bot.send_message(telegram_id, boradcast_message)
             count += 1
-        finally:
-            pass
+        except Exception as e:
+            logging.error(e)
 
     logging.info(f"Broadcasted to {count} users next message: {boradcast_message}")
 
@@ -219,7 +219,7 @@ async def see_keys_handler(message: Message):
 
     for i, k in enumerate(keys):
         if k.tag:
-            responses.append(f"{i + 1} ключ \(id\={k.id}\) \(tag: {k.tag}\):\n```{escape_markdown_v2(k.key_text)}```")
+            responses.append(f"{i + 1} ключ \(id\={k.id}\) \(tag: {escape_markdown_v2(k.tag)}\):\n```{escape_markdown_v2(k.key_text)}```")
         else:
             responses.append(f"{i + 1} ключ \(id\={k.id}\):\n```{escape_markdown_v2(k.key_text)}```")
     for response in responses:
@@ -259,8 +259,6 @@ async def edit_key_handler(message: Message):
 
     args[3] = " ".join(args[3:])
     new_text = args[3] if args[3] != '~' else key.key_text
-
-    print(f"{key_id}\n{new_identifier}\n{new_tag}\n{new_text[-20:]}\n")
 
     new_user = await get_user_by_identifier(new_identifier)
     if not new_user:
