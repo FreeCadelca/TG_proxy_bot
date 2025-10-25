@@ -104,5 +104,5 @@ async def daily_check(bot):
 
 def init_scheduler(bot):
     """Инициализация scheduler."""
-    scheduler.add_job(daily_check, 'cron', hour=15, minute=0, args=(bot,))
+    scheduler.add_job(daily_check, 'cron', hour=18, minute=0, args=(bot,))
     scheduler.start()

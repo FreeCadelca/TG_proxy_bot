@@ -289,6 +289,13 @@ async def remove_key_handler(message: Message):
         await message.answer(f"Не удалось ключ с id = {key_id}")
 
 
+@router.message()
+async def catch_all(message: Message):
+    logging.info(
+        f"Unhandled message from user {message.from_user.id}: {message.text!r}"
+    )
+
+
 def init_bot_instance_admin(bot: aiogram.Bot):
     global Bot
     Bot = bot
