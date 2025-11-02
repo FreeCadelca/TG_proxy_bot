@@ -90,7 +90,7 @@ async def daily_check(bot):
 
             # Если баланс человека отрицательный - напоминаем о долге
             await session.refresh(user)
-            if user.balance < 0:
+            if user.balance < 0 and datetime.now().day % 3 == 0:
                 needed = -user.balance
                 logging.info(f"Debt for user {user_id}: {needed} on {now}")
                 await bot.send_message(
