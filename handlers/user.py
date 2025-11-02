@@ -1,7 +1,8 @@
 import logging
 
+import requests
 from aiogram import Router, types
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, FSInputFile
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -29,6 +30,13 @@ main_keyboard = ReplyKeyboardMarkup(
     one_time_keyboard=False,
     input_field_placeholder="Выберите действие 🔽"
 )
+
+PERIODS = {
+    '1h': '1h',
+    '6h': '6h',
+    '1d': '24h',
+    '7d': '168h'
+}
 
 
 # === обработчики кнопок ===
@@ -143,7 +151,8 @@ async def keys_handler(message: Message):
 
     for i, k in enumerate(keys):
         if k.tag:
-            responses.append(f"{i + 1} ключ \(tag: {escape_markdown_v2(k.tag)}\):\n```{escape_markdown_v2(k.key_text)}```")
+            responses.append(
+                f"{i + 1} ключ \(tag: {escape_markdown_v2(k.tag)}\):\n```{escape_markdown_v2(k.key_text)}```")
         else:
             responses.append(f"{i + 1} ключ:\n```{escape_markdown_v2(k.key_text)}```")
     for response in responses:
@@ -186,3 +195,51 @@ async def help_bot_handler(message: Message):
 async def config_handler(message: Message):
     """Отправить ссылку на config gist."""
     await message.answer(f"Конфиг для роутинга: {config.CONFIG_GIST_URL}", reply_markup=main_keyboard)
+
+
+async def get_graph_image(period_sec):
+    print(period_sec)
+    # Создать сессию и авторизоваться
+    session = requests.Session()
+    login_data = {
+        "name": config.ZABBIX_USER,
+        "password": config.ZABBIX_PASS,
+        "enter": "Sign in"
+    }
+    login_response = session.post(f"{config.ZABBIX_URL}/index.php", data=login_data)
+    if 'zbx_session' not in session.cookies or 'index.php?form_refresh' in login_response.url:
+        raise Exception("Login failed. Check credentials, Zabbix URL, or version specifics.")
+
+    # URL для графика (в новых версиях может быть /chart7.php — проверь в UI)
+    chart_url = f"{config.ZABBIX_URL}/chart2.php?graphid={config.ZABBIX_NETWORK_CHART_ID}&period={period_sec}&to=now&width=1200&height=400"
+    print(chart_url)
+    response = session.get(chart_url)
+
+    if response.status_code == 200 and response.headers['Content-Type'] == 'image/png':
+        image_path = "traffic.png"
+        with open(image_path, "wb") as f:
+            f.write(response.content)
+        return image_path
+    else:
+        raise Exception(f"Failed to get graph image: {response.status_code} - {response.text}")
+
+
+@router.message(Command("netstat"))
+async def netstat_handler(message: Message):
+    """Запросить график сетевой загруженности: /netstat <period>, period=1h|6h|1d|7d, default=1d"""
+    args = message.text.split()[1:]
+    period = '1d'
+    if len(args) >= 1:
+        if args[0] in ('1h', '6h', '1d', '7d'):
+            period = args[0]
+        else:
+            return await message.answer(
+                f"Неверный период. Выберите один из 1h/6h/1d/7d, по умолчанию - 1d",
+                reply_markup=main_keyboard
+            )
+    try:
+        image_path = await get_graph_image(PERIODS[period])
+        photo = FSInputFile(image_path)
+        await message.reply_photo(photo=photo, reply_markup=main_keyboard)
+    except Exception as e:
+        await message.answer(f"Error: {str(e)}")
