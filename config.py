@@ -50,6 +50,7 @@ class Config:
         self.DB_URL = os.getenv("DB_URL", "sqlite+aiosqlite:///bot.db")
         self.MONTHLY_FEE = int(os.getenv("MONTHLY_FEE", "65.0"))
         self.PAYMENT_DAY = int(os.getenv("PAYMENT_DAY", "24"))
+        self.CACHE_TTL = int(os.getenv("CACHE_TTL", "120"))
         self.REMIND_BEFORE_DAYS = int(os.getenv("REMIND_BEFORE_DAYS", "3"))
         self.REMIND_INTERVAL_DAYS = int(os.getenv("REMIND_INTERVAL_DAYS", "7"))
         self.ADMIN_PHONES = os.getenv("ADMIN_PHONES", "").split(",")

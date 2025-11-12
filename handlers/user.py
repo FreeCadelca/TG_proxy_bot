@@ -1,4 +1,7 @@
 import logging
+import os
+import time
+from datetime import datetime
 
 import requests
 from aiogram import Router, types
@@ -201,8 +204,17 @@ async def config_handler(message: Message):
     await message.answer(f"Конфиг для роутинга: {config.CONFIG_GIST_URL}", reply_markup=main_keyboard)
 
 
-async def get_graph_image(period):
-    # Создать сессию и авторизоваться
+async def get_graph_image(period: str):
+    # Сначала проверка на то, что зарендеренный ответ уже закеширован
+    image_path = f"cached_charts/traffic_{period}.png"
+    image_path = image_path.replace('/', os.sep)
+
+    if os.path.exists(image_path):
+        mtime = os.path.getmtime(image_path)
+        age = time.time() - mtime
+        if age <= config.CACHE_TTL:
+            return image_path
+    # Если нет в кеше или он не свежий, то создаем сессию и авторизуемся
     session = requests.Session()
     login_data = {
         "name": config.ZABBIX_USER,
@@ -213,7 +225,7 @@ async def get_graph_image(period):
     if 'zbx_session' not in session.cookies or 'index.php?form_refresh' in login_response.url:
         raise Exception("Login failed. Check credentials, Zabbix URL, or version specifics.")
 
-    # URL для графика (в новых версиях может быть /chart7.php — проверь в UI)
+    # URL для графика
     chart_url = (
         f"{config.ZABBIX_URL}/chart2.php?"
         f"graphid={config.ZABBIX_NETWORK_CHART_ID}&"
@@ -224,7 +236,6 @@ async def get_graph_image(period):
     response = session.get(chart_url)
 
     if response.status_code == 200 and response.headers['Content-Type'] == 'image/png':
-        image_path = "traffic.png"
         with open(image_path, "wb") as f:
             f.write(response.content)
         return image_path
