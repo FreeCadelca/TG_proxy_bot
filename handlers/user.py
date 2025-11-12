@@ -18,25 +18,18 @@ class Registration(StatesGroup):
     invite_code = State()
 
 
-TextOnButtons = ["🔑 Ключи", "💰 Платежи", "📖 Гайд", "⚙️ Файл конфига", "ℹ️ Помощь️"]
+TextOnButtons = ["🔑 Ключи", "💰 Платежи", "📖 Гайд", "⚙️ Файл конфига", "ℹ️ Помощь️", "📈 График трафика"]
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text=TextOnButtons[0]), KeyboardButton(text=TextOnButtons[1])],
         [KeyboardButton(text=TextOnButtons[2]), KeyboardButton(text=TextOnButtons[3])],
-        [KeyboardButton(text=TextOnButtons[4])],
+        [KeyboardButton(text=TextOnButtons[4]), KeyboardButton(text=TextOnButtons[5])],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
     input_field_placeholder="Выберите действие 🔽"
 )
-
-PERIODS = {
-    '1h': '1h',
-    '6h': '6h',
-    '1d': '24h',
-    '7d': '168h'
-}
 
 
 # === обработчики кнопок ===
@@ -63,6 +56,17 @@ async def help_btn_handler(message: types.Message):
 @router.message(lambda msg: msg.text == TextOnButtons[4])
 async def config_btn_handler(message: types.Message):
     await help_bot_handler(message)
+
+
+@router.message(lambda msg: msg.text == TextOnButtons[5])
+async def netstat_btn_handler(message: types.Message):
+    period = '1d'
+    try:
+        image_path = await get_graph_image(period)
+        photo = FSInputFile(image_path)
+        await message.reply_photo(photo=photo, reply_markup=main_keyboard)
+    except Exception as e:
+        await message.answer(f"Error: {str(e)}")
 
 
 @router.message(Command("start"))
@@ -197,8 +201,7 @@ async def config_handler(message: Message):
     await message.answer(f"Конфиг для роутинга: {config.CONFIG_GIST_URL}", reply_markup=main_keyboard)
 
 
-async def get_graph_image(period_sec):
-    print(period_sec)
+async def get_graph_image(period):
     # Создать сессию и авторизоваться
     session = requests.Session()
     login_data = {
@@ -211,8 +214,13 @@ async def get_graph_image(period_sec):
         raise Exception("Login failed. Check credentials, Zabbix URL, or version specifics.")
 
     # URL для графика (в новых версиях может быть /chart7.php — проверь в UI)
-    chart_url = f"{config.ZABBIX_URL}/chart2.php?graphid={config.ZABBIX_NETWORK_CHART_ID}&period={period_sec}&to=now&width=1200&height=400"
-    print(chart_url)
+    chart_url = (
+        f"{config.ZABBIX_URL}/chart2.php?"
+        f"graphid={config.ZABBIX_NETWORK_CHART_ID}&"
+        f"from=now-{period}&to=now&width=1200&height=400&"
+        f"legend=1&profileIdx=web.dashboard.filter&profileIdx2=0&outer=1&widget_view=1"
+    )
+
     response = session.get(chart_url)
 
     if response.status_code == 200 and response.headers['Content-Type'] == 'image/png':
@@ -238,7 +246,7 @@ async def netstat_handler(message: Message):
                 reply_markup=main_keyboard
             )
     try:
-        image_path = await get_graph_image(PERIODS[period])
+        image_path = await get_graph_image(period)
         photo = FSInputFile(image_path)
         await message.reply_photo(photo=photo, reply_markup=main_keyboard)
     except Exception as e:
