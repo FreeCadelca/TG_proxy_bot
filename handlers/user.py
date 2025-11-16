@@ -113,7 +113,11 @@ async def start_handler(message: Message, state: FSMContext):
 @router.message(Registration.invite_code)
 async def process_invite(message: Message, state: FSMContext):
     """Валидация invite и регистрация с nickname."""
-    code = message.text.strip()
+    try:
+        code = message.text.strip()
+    except AttributeError:
+        await message.answer("Это не то, что я прошу...")
+        return
     invite = await get_invite_by_code(code)
     if invite:
         user_id = await add_user(message.from_user.id, message.from_user.username, invite.nickname)

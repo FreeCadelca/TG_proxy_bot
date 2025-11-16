@@ -190,7 +190,7 @@ async def broadcast_handler(message: Message):
     for user in users.scalars().all():
         try:
             telegram_id = user.telegram_id  # Сохраняем telegram_id заранее
-            await Bot.send_message(telegram_id, boradcast_message)
+            await Bot.send_message(telegram_id, escape_markdown_v2(boradcast_message), parse_mode="MarkdownV2")
             count += 1
         except Exception as e:
             logging.error(e)
