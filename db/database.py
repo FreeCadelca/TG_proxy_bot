@@ -165,9 +165,6 @@ async def add_key(user_id: int, key_text: str, tag=None) -> bool:
             await move_keys_to_user(user.nickname, user_id)  # Переносим перед добавлением
         # Check count
         count = await session.scalar(select(func.count()).select_from(Key).where(Key.user_id == user_id))
-        if count >= 5:
-            logging.warning(f"Key limit reached for user {user_id}")
-            return False
         key = Key(user_id=user_id, key_text=key_text, tag=tag)
         session.add(key)
 
@@ -264,9 +261,6 @@ async def move_keys_to_user(nickname: str, user_id: int) -> int:
         for key_in_queue in keys:
             # Проверяем лимит 3 ключа
             current_count = await session.scalar(select(func.count()).select_from(Key).where(Key.user_id == user_id))
-            if current_count >= 5:
-                logging.warning(f"Key limit reached for user_id {user_id}, skipping key transfer")
-                break
             # Переносим
             new_key = Key(user_id=user_id, key_text=key_in_queue.key_text, tag=key_in_queue.tag)
             session.add(new_key)
