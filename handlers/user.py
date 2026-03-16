@@ -21,13 +21,13 @@ class Registration(StatesGroup):
     invite_code = State()
 
 
-TextOnButtons = ["🔑 Ключи", "💰 Платежи", "📖 Гайд", "⚙️ Файл конфига", "ℹ️ Помощь️", "📈 График трафика"]
+TextOnButtons = ["🔑 Ключи", "💰 Платежи", "📖 Гайд", "⚙️ Файл конфига", "ℹ️ Помощь️"]
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text=TextOnButtons[0]), KeyboardButton(text=TextOnButtons[1])],
         [KeyboardButton(text=TextOnButtons[2]), KeyboardButton(text=TextOnButtons[3])],
-        [KeyboardButton(text=TextOnButtons[4]), KeyboardButton(text=TextOnButtons[5])],
+        [KeyboardButton(text=TextOnButtons[4])],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -61,15 +61,15 @@ async def config_btn_handler(message: types.Message):
     await help_bot_handler(message)
 
 
-@router.message(lambda msg: msg.text == TextOnButtons[5])
-async def netstat_btn_handler(message: types.Message):
-    period = '1d'
-    try:
-        image_path = await get_graph_image(period)
-        photo = FSInputFile(image_path)
-        await message.reply_photo(photo=photo, reply_markup=main_keyboard)
-    except Exception as e:
-        await message.answer(f"Error: {str(e)}")
+# @router.message(lambda msg: msg.text == TextOnButtons[5])
+# async def netstat_btn_handler(message: types.Message):
+#     period = '1d'
+#     try:
+#         image_path = await get_graph_image(period)
+#         photo = FSInputFile(image_path)
+#         await message.reply_photo(photo=photo, reply_markup=main_keyboard)
+#     except Exception as e:
+#         await message.answer(f"Error: {str(e)}")
 
 
 @router.message(Command("start"))
@@ -247,22 +247,22 @@ async def get_graph_image(period: str):
         raise Exception(f"Failed to get graph image: {response.status_code} - {response.text}")
 
 
-@router.message(Command("netstat"))
-async def netstat_handler(message: Message):
-    """Запросить график сетевой загруженности: /netstat <period>, period=1h|6h|1d|7d, default=1d"""
-    args = message.text.split()[1:]
-    period = '1d'
-    if len(args) >= 1:
-        if args[0] in ('1h', '6h', '1d', '7d'):
-            period = args[0]
-        else:
-            return await message.answer(
-                f"Неверный период. Выберите один из 1h/6h/1d/7d, по умолчанию - 1d",
-                reply_markup=main_keyboard
-            )
-    try:
-        image_path = await get_graph_image(period)
-        photo = FSInputFile(image_path)
-        await message.reply_photo(photo=photo, reply_markup=main_keyboard)
-    except Exception as e:
-        await message.answer(f"Error: {str(e)}")
+# @router.message(Command("netstat"))
+# async def netstat_handler(message: Message):
+#     """Запросить график сетевой загруженности: /netstat <period>, period=1h|6h|1d|7d, default=1d"""
+#     args = message.text.split()[1:]
+#     period = '1d'
+#     if len(args) >= 1:
+#         if args[0] in ('1h', '6h', '1d', '7d'):
+#             period = args[0]
+#         else:
+#             return await message.answer(
+#                 f"Неверный период. Выберите один из 1h/6h/1d/7d, по умолчанию - 1d",
+#                 reply_markup=main_keyboard
+#             )
+#     try:
+#         image_path = await get_graph_image(period)
+#         photo = FSInputFile(image_path)
+#         await message.reply_photo(photo=photo, reply_markup=main_keyboard)
+#     except Exception as e:
+#         await message.answer(f"Error: {str(e)}")
