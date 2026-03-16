@@ -36,11 +36,11 @@ class Config:
         if not self.ZABBIX_PASS:
             raise ValueError("ZABBIX_PASS не задан в .env")
 
-        self.ZABBIX_URL = os.getenv("ZABBIX_URL")
-        if not self.ZABBIX_URL:
-            raise ValueError("ZABBIX_URL не задан в .env")
+        # self.ZABBIX_URL = os.getenv("ZABBIX_URL")
+        # if not self.ZABBIX_URL:
+        #     raise ValueError("ZABBIX_URL не задан в .env")
 
-        self.ZABBIX_NETWORK_CHART_ID = int(os.getenv("ZABBIX_NETWORK_CHART_ID"))
+        # self.ZABBIX_NETWORK_CHART_ID = int(os.getenv("ZABBIX_NETWORK_CHART_ID"))
 
         self.ADMIN_IDS = [int(id_str) for id_str in os.getenv("ADMIN_IDS", "").split(",") if id_str]
         if not self.ADMIN_IDS:
@@ -59,8 +59,8 @@ class Config:
         self.ADMIN_HELP_TEXT = read_text_from_file("payloads/admin_help_text.txt")
         self.HELP_TEXT = read_text_from_file("payloads/help_text.txt")
 
-        self.zapi = ZabbixAPI("http://95.164.123.32/zabbix/")
-        self.setup_zapi()
+        # self.zapi = ZabbixAPI("http://95.164.123.32/zabbix/")
+        # self.setup_zapi()
 
     def update_fee(self, new_fee: int):
         """Обновить MONTHLY_FEE в runtime, .env и os.environ."""
@@ -81,19 +81,19 @@ class Config:
         logging.info(f"Updated PAYMENT_DAY to {new_day}")
 
 
-    def setup_zapi(self):
-        self.zapi.login(api_token=self.ZABBIX_TOKEN)
-
-        hosts = self.zapi.host.get(filter={"host": "Zabbix server"})
-        host_id = hosts[0]['hostid']
-
-        # # Найти item ID для сетевого трафика (incoming/outgoing)
-        # items = self.zapi.item.get(hostids=host_id, search={"name": "Incoming network traffic on"})
-        # item_id_in = items[0]['itemid'] if items else None
-
-        # # Найти график по имени (например, "Network traffic on eth0")
-        # graphs = self.zapi.graph.get(hostids=host_id, search={"name": "Network traffic"})
-        # graph_id = graphs[0]['graphid'] if graphs else None
+    # def setup_zapi(self):
+    #     self.zapi.login(api_token=self.ZABBIX_TOKEN)
+    #
+    #     hosts = self.zapi.host.get(filter={"host": "Zabbix server"})
+    #     host_id = hosts[0]['hostid']
+    #
+    #     # # Найти item ID для сетевого трафика (incoming/outgoing)
+    #     # items = self.zapi.item.get(hostids=host_id, search={"name": "Incoming network traffic on"})
+    #     # item_id_in = items[0]['itemid'] if items else None
+    #
+    #     # # Найти график по имени (например, "Network traffic on eth0")
+    #     # graphs = self.zapi.graph.get(hostids=host_id, search={"name": "Network traffic"})
+    #     # graph_id = graphs[0]['graphid'] if graphs else None
 
 
 
