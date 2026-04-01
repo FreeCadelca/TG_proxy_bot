@@ -4,6 +4,7 @@ import aiogram
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
+from aiogram.types import ReactionTypeEmoji
 import datetime
 
 from sqlalchemy import select
@@ -289,10 +290,49 @@ async def remove_key_handler(message: Message):
         await message.answer(f"Не удалось ключ с id = {key_id}")
 
 
+@router.message(Command("whisper"))
+async def remove_key_handler(message: Message):
+    """Отправить сообщение пользователю по username: /whisper <nickname> <msg>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+
+    args = message.text.split(maxsplit=2)[1:]
+    if len(args) < 2:
+        return await message.answer("Usage: /whisper <nickname> <msg>")
+    whisper_to = args[0]
+    whisper_message = args[1]
+
+    session = await get_session()
+    result = await session.execute(select(User).where(User.nickname == whisper_to))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        await message.answer("User not found", reply_to_message_id=message.message_id)
+
+    telegram_id = user.telegram_id
+    try:
+        await Bot.send_message(telegram_id, escape_markdown_v2(whisper_message), parse_mode="MarkdownV2")
+        logging.info(f"{message.from_user.username} whispered to {whisper_to} next message: {whisper_message}")
+        await Bot.set_message_reaction(
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            reaction=[ReactionTypeEmoji(emoji="👌")]
+        )
+    except Exception as e:
+        logging.error(e)
+        await message.answer(str(e), reply_to_message_id=message.message_id)
+
+
 @router.message()
 async def catch_all(message: Message):
     logging.info(
         f"Unhandled message from user {message.from_user.id}: {message.text!r}"
+    )
+
+    await Bot.forward_message(
+        chat_id=config.ADMIN_IDS[0],  # кому отправляем
+        from_chat_id=message.chat.id,  # откуда
+        message_id=message.message_id  # какое сообщение
     )
 
 
