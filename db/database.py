@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from typing import List
 
-from .models import Base, User, Invite, Key, KeyInQueue, Payment
+from .models import Base, User, Invite, Key, KeyInQueue, Payment, SubToken
 from config import config
 
 # Async engine для aiogram (требует async-драйвер, e.g. aiosqlite для SQLite)
@@ -324,3 +324,46 @@ async def get_user_payments(user_id: int, limit: int = 6) -> List[Payment]:
             select(Payment).where(Payment.user_id == user_id).order_by(Payment.month_year.desc()).limit(limit)
         )
         return result.scalars().all()
+
+
+# --- sub_tokens operations ---
+async def add_token(user_id: int, token_text: str) -> bool:
+    """Добавить токен подписки"""
+    async with AsyncSessionLocal() as session:
+        token = SubToken(user_id=user_id, token_text=token_text)
+        session.add(token)
+
+        try:
+            await session.commit()
+            logging.info(f"SubToken added for user_id {user_id}")
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logging.warning(f"Failed to add SubToken for user_id {user_id}")
+            return False
+
+async def get_user_tokens(user_id: int) -> List[SubToken]:
+    """Получить токены пользователя."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SubToken).where(SubToken.user_id == user_id))
+        return result.scalars().all()
+
+
+async def remove_token(token_id: int) -> bool:
+    """Удалить токен по id"""
+    async with AsyncSessionLocal() as session:
+        token = await session.get(SubToken, token_id)
+        if not token:
+            raise ValueError(f"Token {token_id} not found")
+
+        # Удаляем токен
+        await session.delete(token)
+
+        try:
+            await session.commit()
+            logging.info(f"Token id = {token_id} removed")
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logging.warning(f"Failed to edit token with id = {token_id}")
+            return False

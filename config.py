@@ -56,10 +56,13 @@ class Config:
         self.ADMIN_PHONES = os.getenv("ADMIN_PHONES", "").split(",")
         self.HELP_GIST_URL = os.getenv("HELP_GIST_URL", "https://gist.github.com/your/default-help")
         self.CONFIG_GIST_URL = os.getenv("CONFIG_GIST_URL", "https://gist.github.com/your/default-config")
+        self.SUBSCRIBE_ENDPOINT = os.getenv("SUBSCRIBE_ENDPOINT", "https://sub.example.com/sub/USER_TOKEN")
+        self.ZABBIX_URL = os.getenv("ZABBIX_URL", "http://<ip>/zabbix/")
+
         self.ADMIN_HELP_TEXT = read_text_from_file("payloads/admin_help_text.txt")
         self.HELP_TEXT = read_text_from_file("payloads/help_text.txt")
 
-        # self.zapi = ZabbixAPI("http://95.164.123.32/zabbix/")
+        # self.zapi = ZabbixAPI(self.ZABBIX_URL)
         # self.setup_zapi()
 
     def update_fee(self, new_fee: int):

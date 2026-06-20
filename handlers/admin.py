@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from db.database import (get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue,
                          get_session, get_user_keys, get_key_by_id, edit_key, remove_key,
-                         get_user_by_user_id)
+                         get_user_by_user_id, add_token, get_user_tokens, remove_token)
 from db.models import User  # Для list_mappings
 from config import config
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
@@ -287,7 +287,7 @@ async def remove_key_handler(message: Message):
     if await remove_key(key_id):
         await message.answer(f"Ключ id = {key_id} успешно удалён")
     else:
-        await message.answer(f"Не удалось ключ с id = {key_id}")
+        await message.answer(f"Не удалось удалить ключ с id = {key_id}")
 
 
 @router.message(Command("whisper"))
@@ -321,6 +321,71 @@ async def remove_key_handler(message: Message):
     except Exception as e:
         logging.error(e)
         await message.answer(str(e), reply_to_message_id=message.message_id)
+
+
+@router.message(Command("add_token"))
+async def add_token_handler(message: Message):
+    """Добавить токен: /add_token <identifier> <token_text>."""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    args = message.text.split()[1:]
+    if len(args) < 2:
+        return await message.answer("Usage: /add_token <identifier> <token_text>")
+    identifier = args[0]
+    token_text = " ".join(args[1:])
+
+    user = await get_user_by_identifier(identifier)
+    if not user:
+        # Пользователь не найден
+        await message.answer("Ошибка добавления токена (пользователь не найден)")
+    else:
+        # Пользователь существует - добавляем в SubTokens
+        if await add_token(user.id, token_text):
+            await message.answer(f"Токен добавлен для {identifier}.")
+        else:
+            await message.answer("Ошибка добавления токена")
+
+
+@router.message(Command("see_tokens"))
+async def see_tokens_handler(message: Message):
+    """Посмотреть токены указанного пользователя: /see_tokens <identifier>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+    args = message.text.split()[1:]
+    if len(args) < 1:
+        return await message.answer("Usage: /see_tokens <identifier>")
+    user_identifier = args[0]
+
+    user = await get_user_by_identifier(user_identifier)
+    if not user:
+        return await message.answer("Пользователь не найден")
+    tokens = await get_user_tokens(user.id)
+    if not tokens:
+        return await message.answer("У пользователя нет ключей")
+
+    responses = [f"Токены пользователя {user_identifier}:"]
+
+    for i, t in enumerate(tokens):
+        responses.append(f"{i + 1} токен \(id\={t.id}\):\n```{escape_markdown_v2(t.token_text)}```")
+    for response in responses:
+        await message.answer(response, parse_mode="MarkdownV2")
+
+
+@router.message(Command("remove_token"))
+async def remove_token_handler(message: Message):
+    """Удалить токен по id: /remove_token <token_id>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+
+    args = message.text.split()[1:]
+    if len(args) < 1:
+        return await message.answer("Usage: /remove_token <token_id>")
+    token_id = int(args[0])
+
+    if await remove_token(token_id):
+        await message.answer(f"Токен id = {token_id} успешно удалён")
+    else:
+        await message.answer(f"Не удалось удалить токен с id = {token_id}")
 
 
 @router.message()

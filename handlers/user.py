@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from db.database import get_user_by_tg_id, add_user, get_invite_by_code, mark_invite_used, get_user_keys, \
-    get_user_payments, move_keys_to_user
+    get_user_payments, move_keys_to_user, get_user_tokens
 from config import config
 
 router = Router()
@@ -21,13 +21,13 @@ class Registration(StatesGroup):
     invite_code = State()
 
 
-TextOnButtons = ["🔑 Ключи", "💰 Платежи", "📖 Гайд", "⚙️ Файл конфига", "ℹ️ Помощь️"]
+TextOnButtons = ["🔑 Ключи", "🎫 Подписка", "💰 Платежи", "📖 Гайд", "⚙️ Файл конфига", "ℹ️ Помощь️"]
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text=TextOnButtons[0]), KeyboardButton(text=TextOnButtons[1])],
         [KeyboardButton(text=TextOnButtons[2]), KeyboardButton(text=TextOnButtons[3])],
-        [KeyboardButton(text=TextOnButtons[4])],
+        [KeyboardButton(text=TextOnButtons[4]), KeyboardButton(text=TextOnButtons[5])],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -42,22 +42,27 @@ async def keys_btn_handler(message: types.Message):
 
 
 @router.message(lambda msg: msg.text == TextOnButtons[1])
+async def subscribe_btn_handler(message: types.Message):
+    await subscribe_handler(message)
+
+
+@router.message(lambda msg: msg.text == TextOnButtons[2])
 async def payments_btn_handler(message: types.Message):
     await payments_handler(message)
 
 
-@router.message(lambda msg: msg.text == TextOnButtons[2])
+@router.message(lambda msg: msg.text == TextOnButtons[3])
 async def guide_btn_handler(message: types.Message):
     await guide_handler(message)
 
 
-@router.message(lambda msg: msg.text == TextOnButtons[3])
-async def help_btn_handler(message: types.Message):
+@router.message(lambda msg: msg.text == TextOnButtons[5])
+async def config_btn_handler(message: types.Message):
     await config_handler(message)
 
 
 @router.message(lambda msg: msg.text == TextOnButtons[4])
-async def config_btn_handler(message: types.Message):
+async def help_btn_handler(message: types.Message):
     await help_bot_handler(message)
 
 
@@ -166,6 +171,24 @@ async def keys_handler(message: Message):
                 f"{i + 1} ключ \(tag: {escape_markdown_v2(k.tag)}\):\n```{escape_markdown_v2(k.key_text)}```")
         else:
             responses.append(f"{i + 1} ключ:\n```{escape_markdown_v2(k.key_text)}```")
+    for response in responses:
+        await message.answer(response, parse_mode="MarkdownV2", reply_markup=main_keyboard)
+
+
+@router.message(Command("subscribe"))
+async def subscribe_handler(message: Message):
+    """Показать ключи (всегда доступно)."""
+    user = await get_user_by_tg_id(message.from_user.id)
+    if not user:
+        return await message.answer("Вы не зарегистрированы.")
+    tokens = await get_user_tokens(user.id)
+    if not tokens:
+        return await message.answer("У вас нет подписок((( Попросите администраторов добавить их вам")
+
+    responses = ["Ваши подписки 🎫:"]
+
+    for i, t in enumerate(tokens):
+        responses.append(f"```{config.SUBSCRIBE_ENDPOINT}{escape_markdown_v2(t.token_text)}```")
     for response in responses:
         await message.answer(response, parse_mode="MarkdownV2", reply_markup=main_keyboard)
 

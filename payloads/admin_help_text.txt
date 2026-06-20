@@ -10,6 +10,10 @@
 /remove_key <key_id> - удалить ключ с конкретным id
 /generate_invite <None|nickname> - сгенерировать инвайт код для нового пользователя. Желательно указать никнейм для нового человека для удобной работы
 /broadcast <text> - сделать объявление всем пользователям бота
+/whisper <identifier> <text> - написать личное сообщение одному пользователю
+/add_token <identifier> <token_text> - добавить токен человеку
+/see_tokens <identifier> - просмотреть токены пользователя
+/remove_token <token_id> - удалить токен с конкретным id
 
 <identifier> - <tg_id | nickname>
 <~> - оставить старое значение

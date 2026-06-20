@@ -17,6 +17,7 @@ class User(Base):
     registered_at = Column(DateTime, default=datetime.now(timezone.utc))
     keys = relationship("Key", back_populates="user")
     payments = relationship("Payment", back_populates="user")
+    sub_tokens = relationship("SubToken", back_populates="user")
 
 
 class Invite(Base):
@@ -66,3 +67,12 @@ class Payment(Base):
     amount = Column(Integer, default=0)
 
     user = relationship("User", back_populates="payments")
+
+
+class SubToken(Base):
+    """Модель токенов подписки"""
+    __tablename__ = "sub_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    token_text = Column(Text, nullable=False)
+    user = relationship("User", back_populates="sub_tokens")
