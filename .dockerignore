@@ -1,0 +1,23 @@
+.git
+.gitignore
+.idea
+.vscode
+__pycache__/
+*.py[cod]
+.venv
+venv/
+
+# секреты и данные не должны попадать в образ — они монтируются при запуске
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.log
+*.log.*
+data/
+cached_charts/*.png
+
+Dockerfile
+docker-compose.yml
+.dockerignore

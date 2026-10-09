@@ -1,3 +1,4 @@
+import os
 import logging
 import asyncio
 from logging.handlers import RotatingFileHandler
@@ -11,13 +12,14 @@ from handlers.admin import init_bot_instance_admin
 from handlers.user import router as user_router
 from handlers.admin import router as admin_router
 
-# Настройка логирования
+# Настройка логирования (путь к файлу можно задать через LOG_FILE, например в docker)
+LOG_FILE = os.getenv("LOG_FILE", "bot.log")
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s: %(message)s',
     handlers=[
         logging.StreamHandler(),
-        RotatingFileHandler('bot.log', maxBytes=10 * 1024 * 1024, backupCount=5)
+        RotatingFileHandler(LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=5)
     ]
 )
 
