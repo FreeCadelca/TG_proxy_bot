@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from config import config
 from db.database import init_db
 from utils.scheduler import init_scheduler
+from utils.middlewares import RegisteredOnlyMiddleware
 from handlers.admin import init_bot_instance_admin
 from handlers.user import router as user_router
 from handlers.admin import router as admin_router
@@ -27,6 +28,8 @@ logging.basicConfig(
 async def main():
     bot = Bot(token=config.BOT_TOKEN)
     dp = Dispatcher()
+    # Незарегистрированным доступны только /start и ввод invite-кода
+    dp.message.outer_middleware(RegisteredOnlyMiddleware())
     dp.include_router(user_router)
     dp.include_router(admin_router)
 

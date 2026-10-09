@@ -394,6 +394,11 @@ async def catch_all(message: Message):
         f"Unhandled message from user {message.from_user.id}: {message.text!r}"
     )
 
+    # Пересылаем админу только личные сообщения (переписка групп, куда добавили бота, не нужна).
+    # Сообщения незарегистрированных сюда не доходят - их отсекает RegisteredOnlyMiddleware
+    if message.chat.type != "private":
+        return
+
     await Bot.forward_message(
         chat_id=config.ADMIN_IDS[0],  # кому отправляем
         from_chat_id=message.chat.id,  # откуда
