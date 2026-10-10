@@ -1,0 +1,29 @@
+services:
+  bot:
+    build: .
+    image: tg-proxy-bot:latest
+    container_name: tg-proxy-bot
+    restart: unless-stopped
+    environment:
+      # Часовой пояс влияет на время ежедневной проверки (18:00) и на даты списаний.
+      # Можно переопределить, добавив TZ=... в .env
+      TZ: ${TZ:-Europe/Moscow}
+      # Переменные из environment имеют приоритет над .env (load_dotenv не перезаписывает их),
+      # поэтому БД и логи гарантированно лежат в примонтированной папке ./data
+      DB_URL: sqlite+aiosqlite:////app/data/bot.db
+      LOG_FILE: /app/data/bot.log
+    volumes:
+      # .env монтируется целиком файлом: бот читает его при старте
+      # и сам дописывает туда MONTHLY_FEE / PAYMENT_DAY при изменении через команды админа
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        bind:
+          create_host_path: false
+      # Постоянные данные: база SQLite и файл логов
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

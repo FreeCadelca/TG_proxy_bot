@@ -89,15 +89,19 @@ async def daily_check(bot):
                     logging.error(f"Error daily processing (nd) user {user_id}: {str(e)}")
 
             # Если баланс человека отрицательный - напоминаем о долге
-            await session.refresh(user)
-            if user.balance < 0 and datetime.now().day % 3 == 0:
-                needed = -user.balance
-                logging.info(f"Debt for user {user_id}: {needed} on {now}")
-                await bot.send_message(
-                    telegram_id,
-                    f"🔔 Напоминание 🔔: отрицательный баланс, пополните счёт на {needed} руб. (/payments) 🙃\n"
-                )
-                logging.info(f"Sent reminder to user {user_id}, needed {needed}")
+            # (ошибка отправки, например бот заблокирован пользователем, не должна прерывать цикл по остальным)
+            try:
+                await session.refresh(user)
+                if user.balance < 0 and datetime.now().day % 3 == 0:
+                    needed = -user.balance
+                    logging.info(f"Debt for user {user_id}: {needed} on {now}")
+                    await bot.send_message(
+                        telegram_id,
+                        f"🔔 Напоминание 🔔: отрицательный баланс, пополните счёт на {needed} руб. (/payments) 🙃\n"
+                    )
+                    logging.info(f"Sent reminder to user {user_id}, needed {needed}")
+            except Exception as e:
+                logging.error(f"Error daily processing (debt) user {user_id}: {str(e)}")
     finally:
         await session.close()  # Закрываем сессию явно для безопасности
 
