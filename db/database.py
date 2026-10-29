@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from sqlalchemy import create_engine, select, update, func
@@ -229,6 +230,29 @@ async def get_key_by_id(key_id: int) -> List[Key]:
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Key).where(Key.id == key_id))
         return result.scalars().all()
+
+
+async def change_ip_in_keys(old_ip: str, new_ip: str) -> int:
+    """Заменить old_ip на new_ip во всех ключах (и в очереди). Возвращает кол-во изменённых ключей."""
+    # Не задеваем другие адреса, содержащие old_ip как подстроку (например 11.2.3.45 при old_ip=1.2.3.4)
+    pattern = re.compile(rf"(?<![\d.]){re.escape(old_ip)}(?!\d)")
+    async with AsyncSessionLocal() as session:
+        keys = (await session.execute(select(Key))).scalars().all()
+        keys += (await session.execute(select(KeyInQueue))).scalars().all()
+        keys = [key for key in keys if pattern.search(key.key_text)]
+        if not keys:
+            return 0
+        for key in keys:
+            key.key_text = pattern.sub(new_ip, key.key_text)
+
+        try:
+            await session.commit()
+            logging.info(f"IP {old_ip} changed to {new_ip} in {len(keys)} keys")
+            return len(keys)
+        except IntegrityError:
+            await session.rollback()
+            logging.warning(f"Failed to change IP {old_ip} to {new_ip}")
+            return 0
 
 
 async def add_key_to_queue(nickname: str, key_text: str, tag=None) -> bool:

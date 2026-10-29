@@ -6,12 +6,13 @@ from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.types import ReactionTypeEmoji
 import datetime
+import ipaddress
 
 from sqlalchemy import select
 
 from db.database import (get_user_by_identifier, generate_invite, add_key, confirm_payment, add_key_to_queue,
                          get_session, get_user_keys, get_key_by_id, edit_key, remove_key,
-                         get_user_by_user_id, add_token, get_user_tokens, remove_token)
+                         get_user_by_user_id, add_token, get_user_tokens, remove_token, change_ip_in_keys)
 from db.models import User  # Для list_mappings
 from config import config
 from db.database import AsyncSessionLocal  # Для сессии в list_mappings
@@ -321,6 +322,29 @@ async def remove_key_handler(message: Message):
     except Exception as e:
         logging.error(e)
         await message.answer(str(e), reply_to_message_id=message.message_id)
+
+
+@router.message(Command("change_ip"))
+async def change_ip_handler(message: Message):
+    """Заменить ip во всех ключах: /change_ip <old_ip> <new_ip>"""
+    if not await is_admin(message.from_user.id):
+        return await message.answer("Доступ только для админов.")
+
+    args = message.text.split()[1:]
+    if len(args) < 2:
+        return await message.answer("Usage: /change_ip <old_ip> <new_ip>")
+    old_ip, new_ip = args[0], args[1]
+    try:
+        ipaddress.IPv4Address(old_ip)
+        ipaddress.IPv4Address(new_ip)
+    except ValueError:
+        return await message.answer("Неверный формат ip (ожидается вида 1.2.3.4)")
+
+    changed_count = await change_ip_in_keys(old_ip, new_ip)
+    if changed_count:
+        await message.answer(f"ip {old_ip} заменён на {new_ip} в {changed_count} ключах")
+    else:
+        await message.answer(f"ip {old_ip} не найден ни в одном ключе")
 
 
 @router.message(Command("add_token"))
